@@ -494,7 +494,6 @@ void CDVDSubtitlesLibass::UpdateRenderCache(int64_t ptsMs)
   // changes every frame and we must not cache.
   int64_t from = std::numeric_limits<int64_t>::min();
   int64_t until = std::numeric_limits<int64_t>::max();
-  bool dynamic = false;
 
   for (int i = 0; i < m_track->n_events; i++)
   {
@@ -511,7 +510,10 @@ void CDVDSubtitlesLibass::UpdateRenderCache(int64_t ptsMs)
       if (start > from)
         from = start;
       if (IsDynamicEvent(assEvent))
-        dynamic = true;
+      {
+        m_renderCacheValid = false;
+        return;
+      }
     }
     else if (start > ptsMs) // starts in the future -> upper boundary
     {
@@ -527,7 +529,7 @@ void CDVDSubtitlesLibass::UpdateRenderCache(int64_t ptsMs)
 
   // Refuse an unbounded interval: after a flush or after the final event, an
   // empty result must not become a cache entry valid for the rest of time.
-  if (dynamic || until <= ptsMs || until == std::numeric_limits<int64_t>::max())
+  if (until <= ptsMs || until == std::numeric_limits<int64_t>::max())
   {
     m_renderCacheValid = false;
   }
