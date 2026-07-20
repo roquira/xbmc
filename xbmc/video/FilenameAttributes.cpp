@@ -15,6 +15,7 @@
 #include "utils/log.h"
 
 #include <algorithm>
+#include <charconv>
 #include <functional>
 #include <utility>
 
@@ -202,5 +203,20 @@ std::string CFilenameAttributes::GetEdition() const
     return it->second;
 
   return "";
+}
+
+int CFilenameAttributes::GetDisc() const
+{
+  const auto it{m_attributes.find("disc")};
+  if (it == m_attributes.end())
+    return -1;
+
+  int disc{-1};
+  const auto [ptr, error]{
+      std::from_chars(it->second.data(), it->second.data() + it->second.size(), disc)};
+  if (error != std::errc{} || ptr != it->second.data() + it->second.size() || disc < 1)
+    return -1;
+
+  return disc;
 }
 } // namespace KODI::VIDEO

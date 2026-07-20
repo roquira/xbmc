@@ -13080,8 +13080,8 @@ bool CVideoDatabase::AddVideoAsset(VideoDbContentType itemType,
   {
     // DynPath may contain a disc (eg. bluray://) path
     CVideoInfoTag* tag{item.GetVideoInfoTag()};
-    idFile =
-        AddFile(item.GetDynPath(), "", tag->m_dateAdded, tag->GetPlayCount(), tag->m_lastPlayed);
+    const std::string assetPath{item.GetDynPath().empty() ? item.GetPath() : item.GetDynPath()};
+    idFile = AddFile(assetPath, "", tag->m_dateAdded, tag->GetPlayCount(), tag->m_lastPlayed);
     tag->m_iFileId = idFile;
   }
   else

@@ -160,6 +160,22 @@ std::string GetOpticalMediaPath(const CFileItem& item)
   return std::string{};
 }
 
+bool IsDiscMetadataExcludedFromScan(const std::string& path)
+{
+  std::string normalized{CURL::Decode(path)};
+  StringUtils::Replace(normalized, '\\', '/');
+  StringUtils::ToUpper(normalized);
+
+  const std::string fileName{URIUtils::GetFileName(normalized)};
+  if (fileName == "ID.BDMV" || fileName == "ID.BDM")
+    return true;
+
+  const bool isBdmv{StringUtils::EndsWith(fileName, ".BDMV") ||
+                    StringUtils::EndsWith(fileName, ".BDM")};
+  return isBdmv && (normalized.find("/BACKUP/") != std::string::npos ||
+                    normalized.find("/CERTIFICATE/") != std::string::npos);
+}
+
 bool IsAutoPlayNextItem(const CFileItem& item)
 {
   if (!item.HasVideoInfoTag())

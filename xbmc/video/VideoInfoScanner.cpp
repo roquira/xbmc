@@ -79,6 +79,42 @@ using KODI::UTILITY::CDigest;
 
 namespace
 {
+constexpr const char* EPISODE_ASSET_RELEASE = "episode_asset_release";
+constexpr const char* EPISODE_RANGE_ASSET = "episode_range_asset";
+constexpr const char* EPISODE_LOGICAL_PATH = "episode_logical_path";
+
+struct EpisodeRangeScanAsset
+{
+  int firstSeason{-1};
+  int firstEpisode{-1};
+  int lastSeason{-1};
+  int lastEpisode{-1};
+  int disc{-1};
+  std::string release;
+};
+
+std::string GetAssetMetadataName(const std::string& path)
+{
+  std::string metadataPath{path};
+  if (URIUtils::IsBDFile(path) || URIUtils::IsDVDFile(path))
+    metadataPath = URIUtils::GetDiscBase(path);
+
+  URIUtils::RemoveSlashAtEnd(metadataPath);
+  return CURL::Decode(URIUtils::GetFileName(metadataPath));
+}
+
+KODI::VIDEO::CFilenameAttributes GetAssetFilenameAttributes(
+    const std::string& path, KODI::REGEXP::RegExpCache* cache)
+{
+  return KODI::VIDEO::CFilenameAttributes(GetAssetMetadataName(path), cache);
+}
+
+std::string GetEpisodeLogicalPath(int idShow, int season, int episode)
+{
+  return StringUtils::Format("library://video/episode-assets/{}/{}/{}.episode", idShow, season,
+                             episode);
+}
+
 /*! \brief Retrieve the art type for an image from the given size.
  \param width the width of the image.
  \param height the height of the image.
@@ -951,6 +987,9 @@ CVideoInfoScanner::~CVideoInfoScanner()
                                                                 CScraperUrl* pURL,
                                                                 CGUIDialogProgress* pDlgProgress)
   {
+    if (UTILS::IsDiscMetadataExcludedFromScan(pItem->GetPath()))
+      return InfoRet::NOT_NEEDED;
+
     if (pItem->IsFolder() || !IsVideo(*pItem) || pItem->IsNFO() ||
         (PLAYLIST::IsPlayList(*pItem) && !URIUtils::HasExtension(pItem->GetPath(), ".strm")))
       return InfoRet::NOT_NEEDED;
@@ -961,8 +1000,8 @@ CVideoInfoScanner::~CVideoInfoScanner()
     if (m_handle)
       m_handle->SetText(pItem->GetMovieName(bDirNames));
 
-    const CFilenameAttributes filenameAttributes(URIUtils::GetFileName(pItem->GetPath()),
-                                                 &m_regexpCache);
+    const CFilenameAttributes filenameAttributes{
+        GetAssetFilenameAttributes(pItem->GetPath(), &m_regexpCache)};
 
     //! @todo: do something about edition values slightly different from db due to
     //! available filesystem characters. ex. "directors cut" in file name vs "Director's Cut"
@@ -1446,6 +1485,8 @@ CVideoInfoScanner::~CVideoInfoScanner()
     {
       if (items[i]->IsFolder())
         continue;
+      if (UTILS::IsDiscMetadataExcludedFromScan(items[i]->GetPath()))
+        continue;
       std::string strPath = URIUtils::GetDirectory(items[i]->GetPath());
       URIUtils::RemoveSlashAtEnd(strPath); // want no slash for the test that follows
 
@@ -1608,9 +1649,13 @@ CVideoInfoScanner::~CVideoInfoScanner()
             ? UseRemoteArtWithLocalScraper::NO
             : UseRemoteArtWithLocalScraper::YES};
 
-    std::string path{pItem->GetPath()};
+    const std::string assetPath{pItem->GetPath()};
+    const bool isEpisodeRangeAsset{pItem->GetProperty(EPISODE_RANGE_ASSET).asBoolean(false)};
+    std::string path{isEpisodeRangeAsset ? pItem->GetProperty(EPISODE_LOGICAL_PATH).asString()
+                                         : assetPath};
     const int playlist{pItem->HasVideoInfoTag() ? pItem->GetVideoInfoTag()->m_iTrack : -1};
-    if (playlist > -1 && (::UTILS::DISCS::IsBlurayDiscImage(path) || URIUtils::IsBDFile(path)))
+    if (!isEpisodeRangeAsset && playlist > -1 &&
+        (::UTILS::DISCS::IsBlurayDiscImage(path) || URIUtils::IsBDFile(path)))
     {
       path = URIUtils::GetBlurayPlaylistPath(path, playlist);
       pItem->SetDynPath(path);
@@ -1646,7 +1691,8 @@ CVideoInfoScanner::~CVideoInfoScanner()
 
     // Determine bluray playlist (if possible)
     // Also populates streamdetails
-    if (!libraryImport && !pItem->GetProperty("from_nfo").asBoolean(false) &&
+    if (!isEpisodeRangeAsset && !libraryImport &&
+        !pItem->GetProperty("from_nfo").asBoolean(false) &&
         (::UTILS::DISCS::IsBlurayDiscImage(path) || URIUtils::IsBDFile(path)))
     {
       if (CDiscDirectoryHelper::GetOrShowPlaylistSelection(*pItem, MenuDecision::SILENT))
@@ -1786,6 +1832,11 @@ CVideoInfoScanner::~CVideoInfoScanner()
         movieDetails.m_iDbId = lResult;
         movieDetails.m_type = MediaTypeEpisode;
         movieDetails.m_strShowTitle = showInfo ? showInfo->m_strTitle : "";
+        if (!isEpisodeRangeAsset && !pItem->GetProperty(MULTIPLE_EPISODES).asBoolean(false))
+        {
+          const std::string release{pItem->GetProperty(EPISODE_ASSET_RELEASE).asString()};
+          m_database.AddEpisodeVersion(lResult, release, *pItem);
+        }
         if (movieDetails.m_EpBookmark.timeInSeconds > 0)
         {
           movieDetails.m_strFileNameAndPath = path;
@@ -2090,6 +2141,57 @@ CVideoInfoScanner::~CVideoInfoScanner()
     for (const auto& file : files)
       episodeMap[file.strPath]++;
 
+    std::unordered_map<std::string, EpisodeRangeScanAsset> rangeAssets;
+    for (const auto& file : files)
+    {
+      if (episodeMap[file.strPath] < 2 || !URIUtils::IsBDFile(file.strPath) || file.iSeason < 0 ||
+          file.iEpisode < 0)
+        continue;
+
+      const auto [it, inserted]{rangeAssets.try_emplace(file.strPath)};
+      auto& range{it->second};
+      if (inserted)
+      {
+        range.firstSeason = file.iSeason;
+        range.firstEpisode = file.iEpisode;
+        range.lastSeason = file.iSeason;
+        range.lastEpisode = file.iEpisode;
+        const CFilenameAttributes attributes{
+            GetAssetFilenameAttributes(file.strPath, &m_regexpCache)};
+        range.release = attributes.GetEdition();
+        range.disc = attributes.GetDisc();
+      }
+      else
+      {
+        if (std::pair{file.iSeason, file.iEpisode} <
+            std::pair{range.firstSeason, range.firstEpisode})
+        {
+          range.firstSeason = file.iSeason;
+          range.firstEpisode = file.iEpisode;
+        }
+        if (std::pair{file.iSeason, file.iEpisode} >
+            std::pair{range.lastSeason, range.lastEpisode})
+        {
+          range.lastSeason = file.iSeason;
+          range.lastEpisode = file.iEpisode;
+        }
+      }
+    }
+
+    for (const auto& [path, range] : rangeAssets)
+    {
+      const int idSeason{m_database.AddSeason(showInfo.m_iDbId, range.firstSeason)};
+      CFileItem asset{path, false};
+      asset.SetDynPath(path);
+      if (!m_database.AddEpisodeRangeAsset(
+              showInfo.m_iDbId, idSeason, range.firstSeason, range.firstEpisode, range.lastSeason,
+              range.lastEpisode, range.disc, range.release, asset, false))
+      {
+        CLog::Log(LOGERROR, "VideoInfoScanner: failed to register episode range asset {}",
+                  CURL::GetRedacted(path));
+      }
+    }
+
     int iMax = files.size();
     int iCurr = 1;
     for (EPISODELIST::iterator file = files.begin(); file != files.end(); ++file)
@@ -2114,6 +2216,37 @@ CVideoInfoScanner::~CVideoInfoScanner()
       if ((pDlgProgress && pDlgProgress->IsCanceled()) || m_bStop)
         return InfoRet::CANCELLED;
 
+      const auto rangeAsset{rangeAssets.find(file->strPath)};
+      const bool isRangeAsset{rangeAsset != rangeAssets.end()};
+      const int logicalEpisodeId{
+          file->iSeason >= 0 && file->iEpisode >= 0
+              ? m_database.GetEpisodeIdByNumbers(showInfo.m_iDbId, file->iSeason, file->iEpisode)
+              : -1};
+
+      if (logicalEpisodeId > -1)
+      {
+        if (!isRangeAsset &&
+            m_database.GetEpisodeId(file->strPath, file->iEpisode, file->iSeason) < 0)
+        {
+          CFileItem asset;
+          if (file->item)
+            asset = *file->item;
+          asset.SetPath(file->strPath);
+          asset.SetDynPath(file->strPath);
+          const std::string release{
+              GetAssetFilenameAttributes(file->strPath, &m_regexpCache).GetEdition()};
+          if (!m_database.AddEpisodeVersion(logicalEpisodeId, release, asset))
+          {
+            CLog::Log(LOGERROR, "VideoInfoScanner: failed to register episode version {}",
+                      CURL::GetRedacted(file->strPath));
+          }
+        }
+        if (m_handle)
+          m_handle->SetText(
+              CServiceBroker::GetResourcesComponent().GetLocalizeStrings().Get(20415));
+        continue;
+      }
+
       if (m_database.GetEpisodeId(file->strPath, file->iEpisode, file->iSeason) > -1)
       {
         if (m_handle)
@@ -2130,6 +2263,18 @@ CVideoInfoScanner::~CVideoInfoScanner()
         item.SetPath(file->strPath);
         item.GetVideoInfoTag()->m_iSeason = file->iSeason;
         item.GetVideoInfoTag()->m_iEpisode = file->iEpisode;
+      }
+
+      const std::string release{
+          GetAssetFilenameAttributes(file->strPath, &m_regexpCache).GetEdition()};
+      item.SetProperty(EPISODE_ASSET_RELEASE, release);
+      if (episodeMap[file->strPath] > 1)
+        item.SetProperty(MULTIPLE_EPISODES, true);
+      if (isRangeAsset)
+      {
+        item.SetProperty(EPISODE_RANGE_ASSET, true);
+        item.SetProperty(EPISODE_LOGICAL_PATH,
+                         GetEpisodeLogicalPath(showInfo.m_iDbId, file->iSeason, file->iEpisode));
       }
 
       // handle .nfo files
@@ -2293,6 +2438,16 @@ CVideoInfoScanner::~CVideoInfoScanner()
         CVideoInfoDownloader imdb(scraper);
         CFileItem scraperItem;
         scraperItem.SetPath(file->strPath);
+        scraperItem.SetProperty(EPISODE_ASSET_RELEASE, release);
+        if (episodeMap[file->strPath] > 1)
+          scraperItem.SetProperty(MULTIPLE_EPISODES, true);
+        if (isRangeAsset)
+        {
+          scraperItem.SetProperty(EPISODE_RANGE_ASSET, true);
+          scraperItem.SetProperty(
+              EPISODE_LOGICAL_PATH,
+              GetEpisodeLogicalPath(showInfo.m_iDbId, file->iSeason, file->iEpisode));
+        }
         if (!imdb.GetEpisodeDetails(guide->cScraperUrl, *scraperItem.GetVideoInfoTag(),
                                     pDlgProgress))
           return InfoRet::NOT_FOUND; //! @todo should we just skip to the next episode?

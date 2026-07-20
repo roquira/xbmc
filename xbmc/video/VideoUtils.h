@@ -39,6 +39,14 @@ std::string FindTrailer(const CFileItem& item, KODI::REGEXP::RegExpCache* cache 
  */
 std::string GetOpticalMediaPath(const CFileItem& item);
 
+/*!
+ * \brief Check whether a Blu-ray metadata path must be ignored by the library scanner.
+ *
+ * This does not affect VFS access or playback. The primary BDMV/index.bdmv entry point remains
+ * scannable; certificate and backup metadata do not become false movie or episode titles.
+ */
+bool IsDiscMetadataExcludedFromScan(const std::string& path);
+
 /*! \brief Check whether auto play next item is set for the media type of the given item.
   \param item [in] the item to check
   \return True if auto play next item is active, false otherwise.

@@ -56,6 +56,12 @@ public:
   std::string GetEdition() const;
 
   /*!
+   * \brief Retrieve a positive disc number from the attributes.
+   * \return Disc number when present and valid, -1 otherwise.
+   */
+  int GetDisc() const;
+
+  /*!
    * \brief Removes all filename attribute pairs from @p fileName
    * \param[in,out] fileName The filename to strip attributes from.
    * \param[in,out] cache Optional regular expression cache
