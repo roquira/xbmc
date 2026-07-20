@@ -66,6 +66,10 @@ CGUIViewStateWindowVideoNav::CGUIViewStateWindowVideoNav(const CFileItemList& it
   if (CServiceBroker::GetSettingsComponent()->GetSettings()->GetBool(CSettings::SETTING_FILELISTS_IGNORETHEWHENSORTING))
     sortAttributes = SortAttributeIgnoreArticle;
 
+  const NodeType nodeType{VIDEO::IsVideoDb(items)
+                              ? CVideoDatabaseDirectory::GetDirectoryChildType(items.GetPath())
+                              : NodeType::NONE};
+
   if (items.IsVirtualDirectoryRoot())
   {
     AddSortMethod(SortBy::NONE, 551,
@@ -78,7 +82,6 @@ CGUIViewStateWindowVideoNav::CGUIViewStateWindowVideoNav(const CFileItemList& it
   }
   else if (VIDEO::IsVideoDb(items))
   {
-    NodeType nodeType = CVideoDatabaseDirectory::GetDirectoryChildType(items.GetPath());
     CQueryParams params;
     CVideoDatabaseDirectory::GetQueryParams(items.GetPath(),params);
 
@@ -382,6 +385,7 @@ CGUIViewStateWindowVideoNav::CGUIViewStateWindowVideoNav(const CFileItemList& it
       break;
       case NodeType::MOVIE_ASSETS:
       case NodeType::MOVIE_ASSETS_VERSIONS:
+      case NodeType::EPISODE_ASSETS:
       {
         AddSortMethod(SortBy::LABEL, sortAttributes, 551,
                       LABEL_MASKS("%L", "", "%L", "")); // Label, empty | Label, empty
@@ -447,7 +451,10 @@ CGUIViewStateWindowVideoNav::CGUIViewStateWindowVideoNav(const CFileItemList& it
     SetViewAsControl(viewState->m_viewMode);
     SetSortOrder(viewState->m_sortDescription.sortOrder);
   }
-  LoadViewState(items.GetPath(), WINDOW_VIDEO_NAV);
+  // Episode version browsers share the versions view state. Do not let a row saved for one
+  // episode override the global versions presentation when another episode is opened.
+  if (nodeType != NodeType::EPISODE_ASSETS)
+    LoadViewState(items.GetPath(), WINDOW_VIDEO_NAV);
 }
 
 void CGUIViewStateWindowVideoNav::SaveViewState()
@@ -498,6 +505,7 @@ void CGUIViewStateWindowVideoNav::SaveViewState()
                      CViewStateSettings::GetInstance().Get("videonavassets"));
         break;
       case NodeType::MOVIE_ASSETS_VERSIONS:
+      case NodeType::EPISODE_ASSETS:
         SaveViewToDb(m_items.GetPath(), WINDOW_VIDEO_NAV,
                      CViewStateSettings::GetInstance().Get("videonavversions"));
         break;

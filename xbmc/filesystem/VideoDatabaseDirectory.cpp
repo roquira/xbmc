@@ -80,6 +80,7 @@ std::string GetChildContentType(const std::unique_ptr<CDirectoryNode>& node)
       return "tags";
     case NodeType::VIDEOVERSIONS:
     case NodeType::MOVIE_ASSETS_VERSIONS:
+    case NodeType::EPISODE_ASSETS:
       return "videoversions";
     case NodeType::MOVIE_ASSETS_EXTRAS:
       return "videoextras";
@@ -302,6 +303,9 @@ bool CVideoDatabaseDirectory::GetLabel(const std::string& strDirectory, std::str
       case NodeType::EPISODES: // Episodes
         strLabel = CServiceBroker::GetResourcesComponent().GetLocalizeStrings().Get(20360);
         break;
+      case NodeType::EPISODE_ASSETS: // Episode versions
+        strLabel = CServiceBroker::GetResourcesComponent().GetLocalizeStrings().Get(40210);
+        break;
       case NodeType::INPROGRESS_TVSHOWS: // InProgress TvShows
         strLabel = CServiceBroker::GetResourcesComponent().GetLocalizeStrings().Get(626);
         break;
@@ -400,6 +404,7 @@ bool CVideoDatabaseDirectory::ContainsMovies(const std::string &path)
 {
   const auto type = GetDirectoryChildType(path);
   if (type == NodeType::TITLE_MOVIES || type == NodeType::EPISODES ||
+      type == NodeType::EPISODE_ASSETS ||
       type == NodeType::TITLE_MUSICVIDEOS || type == NodeType::VIDEOVERSIONS)
     return true;
   return false;

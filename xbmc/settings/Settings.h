@@ -71,6 +71,10 @@ public:
   static constexpr auto SETTING_VIDEOLIBRARY_ACTORTHUMBS = "videolibrary.actorthumbs";
   static constexpr auto SETTING_MYVIDEOS_FLATTEN = "myvideos.flatten";
   static constexpr auto SETTING_VIDEOLIBRARY_FLATTENTVSHOWS = "videolibrary.flattentvshows";
+  static constexpr auto SETTING_VIDEOLIBRARY_SHOWUNLOCATEDEPISODEDISCS =
+      "videolibrary.showunlocatedepisodediscs";
+  static constexpr auto SETTING_VIDEOLIBRARY_SHOWEPISODERELEASES =
+      "videolibrary.showepisodereleases";
   static constexpr auto SETTING_VIDEOLIBRARY_TVSHOWSSELECTFIRSTUNWATCHEDITEM =
       "videolibrary.tvshowsselectfirstunwatcheditem";
   static constexpr auto SETTING_VIDEOLIBRARY_TVSHOWSINCLUDEALLSEASONSANDSPECIALS =

@@ -73,6 +73,7 @@ void CQueryParams::SetQueryParam(NodeType nodeType, const std::string& strNodeNa
       m_idSeason = idDb;
       break;
     case NodeType::EPISODES:
+    case NodeType::EPISODE_ASSETS:
     case NodeType::RECENTLY_ADDED_EPISODES:
       m_idEpisode = idDb;
       break;

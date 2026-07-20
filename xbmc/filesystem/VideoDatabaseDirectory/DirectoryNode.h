@@ -51,6 +51,7 @@ namespace XFILE
       MOVIE_ASSETS,
       MOVIE_ASSETS_VERSIONS,
       MOVIE_ASSETS_EXTRAS,
+      EPISODE_ASSETS,
     };
 
     typedef struct {

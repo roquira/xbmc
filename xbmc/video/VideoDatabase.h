@@ -1038,7 +1038,9 @@ public:
   void GetEpisodeAssets(int idEpisode,
                         std::vector<EpisodeAssetInfo>& assets,
                         bool includeRanges = true);
-  void GetEpisodeVersions(int idEpisode, CFileItemList& items);
+  void GetEpisodeVersions(int idEpisode,
+                          CFileItemList& items,
+                          bool includeRangeAssets = false);
   int ResolveEpisodeAssetId(int idEpisode);
   bool ResolveEpisodeAsset(int idEpisode, CFileItem& item);
 
@@ -1050,7 +1052,11 @@ public:
   int GetTvShowPreferredRelease(int idShow) const;
 
   bool HasSeasonRangeAssets(int idSeason) const;
+  bool GetEpisodeRangeAssetByPath(const std::string& path, EpisodeAssetInfo& asset);
   void GetSeasonRangeAssets(int idSeason,
+                            int idRelease,
+                            std::vector<EpisodeAssetInfo>& assets);
+  void GetTvShowRangeAssets(int idShow,
                             int idRelease,
                             std::vector<EpisodeAssetInfo>& assets);
 

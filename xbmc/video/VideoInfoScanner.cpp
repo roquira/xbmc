@@ -1692,13 +1692,19 @@ CVideoInfoScanner::~CVideoInfoScanner()
     // Determine bluray playlist (if possible)
     // Also populates streamdetails
     if (!isEpisodeRangeAsset && !libraryImport &&
-        !pItem->GetProperty("from_nfo").asBoolean(false) &&
         (::UTILS::DISCS::IsBlurayDiscImage(path) || URIUtils::IsBDFile(path)))
     {
-      if (CDiscDirectoryHelper::GetOrShowPlaylistSelection(*pItem, MenuDecision::SILENT))
+      const bool fromNfo{pItem->GetProperty("from_nfo").asBoolean(false)};
+      CFileItem discInfo{*pItem};
+      CFileItem& playlistItem{fromNfo ? discInfo : *pItem};
+      if (CDiscDirectoryHelper::GetOrShowPlaylistSelection(playlistItem, MenuDecision::SILENT))
       {
-        path = pItem->GetDynPath();
-        pItem->GetVideoInfoTag()->SetFileNameAndPath(path);
+        movieDetails.m_streamDetails = playlistItem.GetVideoInfoTag()->m_streamDetails;
+        if (!fromNfo)
+        {
+          path = pItem->GetDynPath();
+          pItem->GetVideoInfoTag()->SetFileNameAndPath(path);
+        }
       }
     }
 

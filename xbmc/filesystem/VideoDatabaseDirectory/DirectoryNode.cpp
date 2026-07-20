@@ -9,6 +9,7 @@
 #include "DirectoryNode.h"
 
 #include "DirectoryNodeEpisodes.h"
+#include "DirectoryNodeEpisodeAssets.h"
 #include "DirectoryNodeGrouped.h"
 #include "DirectoryNodeInProgressTvShows.h"
 #include "DirectoryNodeMovieAssetTypes.h"
@@ -123,6 +124,8 @@ CDirectoryNode* CDirectoryNode::CreateNode(NodeType Type,
       return new CDirectoryNodeSeasons(strName, pParent);
     case NodeType::EPISODES:
       return new CDirectoryNodeEpisodes(strName, pParent);
+    case NodeType::EPISODE_ASSETS:
+      return new CDirectoryNodeEpisodeAssets(strName, pParent);
     case NodeType::RECENTLY_ADDED_MOVIES:
       return new CDirectoryNodeRecentlyAddedMovies(strName, pParent);
     case NodeType::RECENTLY_ADDED_EPISODES:

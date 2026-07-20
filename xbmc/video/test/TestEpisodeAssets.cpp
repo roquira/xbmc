@@ -162,6 +162,25 @@ TEST_F(EpisodeAssetsTest, ExactVersionsUseDeterministicPreferenceOrder)
   EXPECT_TRUE(m_database.SetTvShowPreferredRelease(1, -1));
 }
 
+TEST_F(EpisodeAssetsTest, ResolvedDefaultDoesNotRequireLogicalFileToBeVersion)
+{
+  CFileItem versionB("C:\\shows\\Show S01E01 [edition=B].mkv", false);
+  CFileItem versionC("C:\\shows\\Show S01E01 [edition=C].mkv", false);
+  ASSERT_TRUE(m_database.AddEpisodeVersion(100, "B", versionB));
+  ASSERT_TRUE(m_database.AddEpisodeVersion(100, "C", versionC));
+
+  // The logical watched-state file was never added as a version. Presentation must still mark
+  // exactly one of the real exact assets using the same fallback that playback resolves.
+  const int resolvedFile{m_database.ResolveEpisodeAssetId(100)};
+  ASSERT_GT(resolvedFile, 0);
+  EXPECT_NE(m_fileA, resolvedFile);
+
+  std::vector<EpisodeAssetInfo> assets;
+  m_database.GetEpisodeAssets(100, assets, false);
+  ASSERT_EQ(2U, assets.size());
+  EXPECT_NE(assets.end(), std::ranges::find(assets, resolvedFile, &EpisodeAssetInfo::m_fileId));
+}
+
 TEST_F(EpisodeAssetsTest, RangeWithoutLocatorIsStoredButNeverResolvedAsEpisode)
 {
   EXPECT_FALSE(m_database.HasSeasonRangeAssets(10));
@@ -185,9 +204,71 @@ TEST_F(EpisodeAssetsTest, RangeWithoutLocatorIsStoredButNeverResolvedAsEpisode)
   EXPECT_FALSE(range->m_hasLocator);
   EXPECT_EQ(discPath, range->m_path);
 
+  EpisodeAssetInfo pathAsset;
+  ASSERT_TRUE(m_database.GetEpisodeRangeAssetByPath(discPath, pathAsset));
+  EXPECT_EQ(range->m_fileId, pathAsset.m_fileId);
+  EXPECT_EQ("Blu-ray", pathAsset.m_release);
+  EXPECT_EQ(1, pathAsset.m_firstEpisode);
+  EXPECT_EQ(7, pathAsset.m_lastEpisode);
+  EXPECT_FALSE(m_database.GetEpisodeRangeAssetByPath("C:\\shows\\not-a-disc.mkv", pathAsset));
+
+  std::vector<EpisodeAssetInfo> exactOnlyAssets;
+  m_database.GetEpisodeAssets(100, exactOnlyAssets, false);
+  ASSERT_EQ(1U, exactOnlyAssets.size());
+  EXPECT_TRUE(exactOnlyAssets.front().IsExact());
+
   const auto exact{std::find_if(assets.begin(), assets.end(),
                                 [](const auto& asset) { return asset.IsExact(); })};
   ASSERT_NE(assets.end(), exact);
   EXPECT_EQ(exact->m_fileId, m_database.ResolveEpisodeAssetId(100));
   EXPECT_NE(range->m_fileId, m_database.ResolveEpisodeAssetId(100));
+
+  const int fileE06{m_database.AddFile("C:\\shows\\Show S01E06.mkv")};
+  const int fileE07{m_database.AddFile("C:\\shows\\Show S01E07.mkv")};
+  const int fileE08{m_database.AddFile("C:\\shows\\Show S01E08.mkv")};
+  ASSERT_GT(fileE06, 0);
+  ASSERT_GT(fileE07, 0);
+  ASSERT_GT(fileE08, 0);
+  ASSERT_TRUE(m_database.ExecuteQuery(m_database.PrepareSQL(
+      "INSERT INTO episode (idEpisode, idFile, c%02d, c%02d, idShow, idSeason) VALUES "
+      "(106, %i, '1', '6', 1, 10), (107, %i, '1', '7', 1, 10), "
+      "(108, %i, '1', '8', 1, 10)",
+      VIDEODB_ID_EPISODE_SEASON, VIDEODB_ID_EPISODE_EPISODE, fileE06, fileE07,
+      fileE08)));
+
+  CFileItem secondDisc(
+      "C:\\shows\\Show S01E08-E11 [edition=Blu-ray] [disc=02]\\BDMV\\index.bdmv", false);
+  ASSERT_TRUE(m_database.AddEpisodeRangeAsset(1, 10, 1, 8, 1, 11, 2, "Blu-ray", secondDisc,
+                                              false));
+
+  const auto rangeFileForEpisode = [this](int episodeId)
+  {
+    std::vector<EpisodeAssetInfo> episodeAssets;
+    m_database.GetEpisodeAssets(episodeId, episodeAssets, true);
+    const auto rangeAsset{std::ranges::find_if(
+        episodeAssets, [](const auto& asset) { return !asset.IsExact(); })};
+    return rangeAsset == episodeAssets.end() ? -1 : rangeAsset->m_fileId;
+  };
+  EXPECT_EQ(range->m_fileId, rangeFileForEpisode(106));
+  EXPECT_EQ(range->m_fileId, rangeFileForEpisode(107));
+  const int secondDiscFile{rangeFileForEpisode(108)};
+  EXPECT_GT(secondDiscFile, 0);
+  EXPECT_NE(range->m_fileId, secondDiscFile);
+
+  ASSERT_TRUE(m_database.ExecuteQuery(
+      "INSERT INTO seasons (idSeason, idShow, season) VALUES(20, 1, 2)"));
+  CFileItem thirdDisc("C:\\shows\\Show S02E01-E04 [edition=Blu-ray] [disc=03]\\BDMV\\index.bdmv",
+                      false);
+  ASSERT_TRUE(m_database.AddEpisodeRangeAsset(1, 20, 2, 1, 2, 4, 3, "Blu-ray", thirdDisc,
+                                              false));
+
+  std::vector<EpisodeAssetInfo> showRanges;
+  m_database.GetTvShowRangeAssets(1, range->m_releaseId, showRanges);
+  ASSERT_EQ(3U, showRanges.size());
+  EXPECT_EQ(std::pair(1, 1),
+            std::pair(showRanges[0].m_firstSeason, showRanges[0].m_firstEpisode));
+  EXPECT_EQ(std::pair(1, 8),
+            std::pair(showRanges[1].m_firstSeason, showRanges[1].m_firstEpisode));
+  EXPECT_EQ(std::pair(2, 1),
+            std::pair(showRanges[2].m_firstSeason, showRanges[2].m_firstEpisode));
 }

@@ -25382,3 +25382,27 @@ msgstr ""
 msgctxt "#40821"
 msgid "Clear show release preference"
 msgstr ""
+
+#. Advanced video-library setting that permits manual playback of complete TV discs without an episode locator
+#: system/settings/settings.xml
+msgctxt "#40822"
+msgid "Show complete TV discs in episode version browser"
+msgstr ""
+
+#. Help for setting #40822
+#: system/settings/settings.xml
+msgctxt "#40823"
+msgid "Lists discs that cover the selected episode even when Kodi cannot start at that episode. Selecting one starts the complete disc. Automatic episode selection continues to ignore these discs."
+msgstr ""
+
+#. Advanced video-library setting controlling the extra release browser in season listings
+#: system/settings/settings.xml
+msgctxt "#40825"
+msgid "Show Releases & discs in seasons"
+msgstr ""
+
+#. Help for setting #40825
+#: system/settings/settings.xml
+msgctxt "#40826"
+msgid "Adds a Releases & discs folder to individual season views when complete TV discs are available. This does not affect discs offered as episode versions."
+msgstr ""

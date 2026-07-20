@@ -1,4 +1,5 @@
-set(SOURCES TestNodeMovieAssets.cpp
+set(SOURCES TestNodeEpisodeAssets.cpp
+            TestNodeMovieAssets.cpp
             TestNodeMovieAssetTypes.cpp
             TestNodeRecentlyAddedMovies.cpp
             TestNodeTitleMovies.cpp)

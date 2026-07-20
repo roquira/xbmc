@@ -69,6 +69,7 @@
 #include "video/guilib/VideoSelectActionProcessor.h"
 #include "view/GUIViewState.h"
 
+#include <iterator>
 #include <map>
 #include <memory>
 #include <ranges>
@@ -92,6 +93,136 @@ using namespace KODI::MESSAGING;
 
 #define PROPERTY_GROUP_BY           "group.by"
 #define PROPERTY_GROUP_MIXED        "group.mixed"
+
+namespace
+{
+std::string GetEpisodeRangeCoverage(int firstSeason,
+                                    int firstEpisode,
+                                    int lastSeason,
+                                    int lastEpisode)
+{
+  return firstSeason == lastSeason
+             ? StringUtils::Format("E{:02}-E{:02}", firstEpisode, lastEpisode)
+             : StringUtils::Format("S{:02}E{:02}-S{:02}E{:02}", firstSeason, firstEpisode,
+                                   lastSeason, lastEpisode);
+}
+
+std::string GetEpisodeRangeLabel(const std::string& release,
+                                 int disc,
+                                 int firstSeason,
+                                 int firstEpisode,
+                                 int lastSeason,
+                                 int lastEpisode)
+{
+  const auto& localize{CServiceBroker::GetResourcesComponent().GetLocalizeStrings()};
+  const std::string discLabel{disc > 0 ? StringUtils::Format(localize.Get(40814), disc)
+                                       : localize.Get(40815)};
+  return StringUtils::Format("{} - {} - {}", release, discLabel,
+                             GetEpisodeRangeCoverage(firstSeason, firstEpisode, lastSeason,
+                                                     lastEpisode));
+}
+
+void FormatEpisodeRangeVersion(CFileItem& item)
+{
+  if (!item.GetProperty("episode_range_asset").asBoolean(false))
+    return;
+
+  const std::string release{item.HasVideoInfoTag()
+                                ? item.GetVideoInfoTag()->GetAssetInfo().GetTitle()
+                                : item.GetLabel()};
+  item.SetLabel(GetEpisodeRangeLabel(
+      release, item.GetProperty("episode_range_disc").asInteger32(),
+      item.GetProperty("episode_range_first_season").asInteger32(),
+      item.GetProperty("episode_range_first_episode").asInteger32(),
+      item.GetProperty("episode_range_last_season").asInteger32(),
+      item.GetProperty("episode_range_last_episode").asInteger32()));
+  item.SetLabelPreformatted(true);
+}
+
+void SetEpisodeRangeProperties(CFileItem& item, const EpisodeAssetInfo& asset)
+{
+  item.SetProperty("episode_range_asset", true);
+  item.SetProperty("episode_range_file_id", asset.m_fileId);
+  item.SetProperty("episode_range_show_id", asset.m_showId);
+  item.SetProperty("episode_range_season_id", asset.m_seasonId);
+  item.SetProperty("episode_range_release_id", asset.m_releaseId);
+  item.SetProperty("episode_range_first_season", asset.m_firstSeason);
+  item.SetProperty("episode_range_first_episode", asset.m_firstEpisode);
+  item.SetProperty("episode_range_last_season", asset.m_lastSeason);
+  item.SetProperty("episode_range_last_episode", asset.m_lastEpisode);
+  item.SetProperty("episode_range_disc", asset.m_disc);
+  item.SetProperty("episode_range_has_locator", asset.m_hasLocator);
+}
+
+std::shared_ptr<CFileItem> MakeEpisodeRangePlaybackItem(const CFileItem& source)
+{
+  // A manually selected unlocated range represents the complete disc, not a request for Kodi to
+  // infer a single episode playlist. Do not carry the logical episode tag into ApplicationPlay;
+  // the raw disc item then follows the configured Blu-ray playback mode.
+  const std::string path{source.GetDynPath().empty() ? source.GetPath() : source.GetDynPath()};
+  auto item{std::make_shared<CFileItem>(path, false)};
+  item->SetDynPath(path);
+  item->SetLabel(source.GetLabel());
+  item->SetLabelPreformatted(source.IsLabelPreformatted());
+  item->SetArt(source.GetArt());
+  item->SetCanQueue(true);
+  return item;
+}
+
+std::shared_ptr<CFileItem> MakeEpisodeRangeQueueItem(const EpisodeAssetInfo& asset)
+{
+  auto item{std::make_shared<CFileItem>(asset.m_path, false)};
+  item->SetDynPath(asset.m_path);
+  item->SetLabel(GetEpisodeRangeLabel(asset.m_release, asset.m_disc, asset.m_firstSeason,
+                                      asset.m_firstEpisode, asset.m_lastSeason,
+                                      asset.m_lastEpisode));
+  item->SetLabelPreformatted(true);
+  SetEpisodeRangeProperties(*item, asset);
+  return item;
+}
+
+bool PlayEpisodeRangeSequence(const std::shared_ptr<CFileItem>& selected,
+                              const std::string& player,
+                              CVideoDatabase& database)
+{
+  const int selectedFile{selected->GetProperty("episode_range_file_id").asInteger32()};
+  const int showId{selected->GetProperty("episode_range_show_id").asInteger32()};
+  const int releaseId{selected->GetProperty("episode_range_release_id").asInteger32()};
+  if (selectedFile <= 0 || showId <= 0 || releaseId <= 0)
+    return false;
+
+  std::vector<EpisodeAssetInfo> ranges;
+  database.GetTvShowRangeAssets(showId, releaseId, ranges);
+  const auto selectedRange{std::ranges::find(ranges, selectedFile,
+                                             &EpisodeAssetInfo::m_fileId)};
+  if (selectedRange == ranges.end())
+    return false;
+
+  CFileItemList queuedItems;
+  auto selectedCopy{MakeEpisodeRangePlaybackItem(*selected)};
+  queuedItems.Add(std::move(selectedCopy));
+
+  std::pair<int, int> coveredThrough{selectedRange->m_lastSeason,
+                                     selectedRange->m_lastEpisode};
+  for (auto it{std::next(selectedRange)}; it != ranges.end(); ++it)
+  {
+    const std::pair<int, int> startsAt{it->m_firstSeason, it->m_firstEpisode};
+    if (startsAt <= coveredThrough)
+      continue;
+
+    queuedItems.Add(MakeEpisodeRangeQueueItem(*it));
+    coveredThrough = {it->m_lastSeason, it->m_lastEpisode};
+  }
+
+  auto& playlistPlayer{CServiceBroker::GetPlaylistPlayer()};
+  playlistPlayer.ClearPlaylist(PLAYLIST::Id::TYPE_VIDEO);
+  playlistPlayer.Reset();
+  playlistPlayer.Add(PLAYLIST::Id::TYPE_VIDEO, queuedItems);
+  playlistPlayer.SetCurrentPlaylist(PLAYLIST::Id::TYPE_VIDEO);
+  playlistPlayer.Play(0, player);
+  return true;
+}
+} // unnamed namespace
 
 CGUIWindowVideoBase::CGUIWindowVideoBase(int id, const std::string &xmlFile)
     : CGUIMediaWindow(id, xmlFile.c_str())
@@ -780,6 +911,26 @@ void CGUIWindowVideoBase::LoadVideoInfo(CFileItemList& items,
     const auto& pItem{items[i]};
     std::shared_ptr<CFileItem> match;
 
+    if (content == "episodes" &&
+        (pItem->IsOpticalMediaFile() || (pItem->IsFolder() && !pItem->IsParentFolder())))
+    {
+      const std::string assetPath{pItem->GetDynPath()};
+      EpisodeAssetInfo rangeAsset;
+      if (database.GetEpisodeRangeAssetByPath(assetPath, rangeAsset))
+      {
+        pItem->SetPath(rangeAsset.m_path);
+        pItem->SetDynPath(rangeAsset.m_path);
+        pItem->SetFolder(false);
+        pItem->SetCanQueue(false);
+        pItem->SetLabel(GetEpisodeRangeLabel(
+            rangeAsset.m_release, rangeAsset.m_disc, rangeAsset.m_firstSeason,
+            rangeAsset.m_firstEpisode, rangeAsset.m_lastSeason, rangeAsset.m_lastEpisode));
+        pItem->SetLabelPreformatted(true);
+        SetEpisodeRangeProperties(*pItem, rangeAsset);
+        continue;
+      }
+    }
+
     if (pItem->IsFolder() && !pItem->IsParentFolder())
     {
       // we need this for enabling the right context menu entries, like mark watched / unwatched
@@ -892,8 +1043,14 @@ void CGUIWindowVideoBase::GetContextButtons(int itemNumber, CContextButtons &but
       if (item->HasVideoInfoTag() && item->GetVideoInfoTag()->m_type == MediaTypeEpisode &&
           item->GetVideoInfoTag()->HasVideoVersions())
       {
-        buttons.Add(CONTEXT_BUTTON_SET_EPISODE_VERSION, 40816);
-        if (m_database.GetEpisodeDefaultAsset(item->GetVideoInfoTag()->m_iDbId) > 0)
+        const int explicitDefault{
+            m_database.GetEpisodeDefaultAsset(item->GetVideoInfoTag()->m_iDbId)};
+        const bool selectedAsset{
+            item->GetProperty("episode_asset_selected").asBoolean(false)};
+        const bool rangeAsset{item->GetProperty("episode_range_asset").asBoolean(false)};
+        if (!selectedAsset || (!rangeAsset && explicitDefault != item->GetVideoInfoTag()->m_iFileId))
+          buttons.Add(CONTEXT_BUTTON_SET_EPISODE_VERSION, 40816);
+        if (explicitDefault > 0)
           buttons.Add(CONTEXT_BUTTON_CLEAR_EPISODE_VERSION, 40817);
       }
     }
@@ -978,6 +1135,15 @@ bool CGUIWindowVideoBase::OnContextButton(int itemNumber, CONTEXT_BUTTON button)
   }
   case CONTEXT_BUTTON_SET_EPISODE_VERSION:
   {
+    if (item->GetProperty("episode_asset_selected").asBoolean(false) &&
+        !item->GetProperty("episode_range_asset").asBoolean(false))
+    {
+      m_database.SetEpisodeDefaultAsset(item->GetVideoInfoTag()->m_iDbId,
+                                        item->GetVideoInfoTag()->m_iFileId);
+      Refresh(true);
+      return true;
+    }
+
     CFileItemList versions;
     m_database.GetEpisodeVersions(item->GetVideoInfoTag()->m_iDbId, versions);
     if (versions.IsEmpty())
@@ -989,6 +1155,7 @@ bool CGUIWindowVideoBase::OnContextButton(int itemNumber, CONTEXT_BUTTON button)
     dialog->Reset();
     dialog->SetHeading(CVariant{40816});
     dialog->SetItems(versions);
+    dialog->SetUseDetails(true);
     dialog->Open();
     if (dialog->IsConfirmed())
     {
@@ -1170,8 +1337,14 @@ bool CGUIWindowVideoBase::PlayItem(const std::shared_ptr<CFileItem>& pItem,
   {
     CVideoDatabase db;
     CFileItemList versions;
+    const bool includeRangeAssets{
+        CServiceBroker::GetSettingsComponent()->GetSettings()->GetBool(
+            CSettings::SETTING_VIDEOLIBRARY_SHOWUNLOCATEDEPISODEDISCS)};
     if (db.Open())
-      db.GetEpisodeVersions(pItem->GetVideoInfoTag()->m_iDbId, versions);
+      db.GetEpisodeVersions(pItem->GetVideoInfoTag()->m_iDbId, versions, includeRangeAssets);
+
+    for (const auto& version : versions)
+      FormatEpisodeRangeVersion(*version);
 
     if (versions.IsEmpty())
     {
@@ -1183,28 +1356,54 @@ bool CGUIWindowVideoBase::PlayItem(const std::shared_ptr<CFileItem>& pItem,
     }
     else
     {
-      int selected{0};
-      if (versions.Size() > 1)
+      int selected{-1};
+      const int explicitDefault{db.GetEpisodeDefaultAsset(pItem->GetVideoInfoTag()->m_iDbId)};
+      for (int i = 0; explicitDefault > 0 && i < versions.Size(); ++i)
       {
-        CGUIDialogSelect* dialog{
-            CServiceBroker::GetGUI()->GetWindowManager().GetWindow<CGUIDialogSelect>(
-                WINDOW_DIALOG_SELECT)};
-        dialog->Reset();
-        dialog->SetHeading(CVariant{40810});
-        dialog->SetItems(versions);
-        dialog->Open();
-        if (!dialog->IsConfirmed())
-          return true;
-        selected = dialog->GetSelectedItem();
+        if (versions.Get(i)->HasVideoInfoTag() &&
+            versions.Get(i)->GetVideoInfoTag()->m_iFileId == explicitDefault)
+        {
+          selected = i;
+          break;
+        }
       }
+
+      if (selected < 0 && versions.Size() > 1)
+      {
+        const auto* tag{pItem->GetVideoInfoTag()};
+        return Update(StringUtils::Format("videodb://tvshows/titles/{}/{}/{}/", tag->m_iIdShow,
+                                          tag->m_iSeason, tag->m_iDbId));
+      }
+      else if (selected < 0)
+        selected = 0;
 
       auto asset{std::make_shared<CFileItem>(*versions.Get(selected))};
       asset->SetProperty("episode_asset_selected", true);
       asset->SetProperty("original_listitem_url", pItem->GetPath());
       asset->SetProperty("ParentPath", pItem->GetProperty("ParentPath"));
       asset->SetStartOffset(pItem->GetStartOffset());
+      if (asset->GetProperty("episode_range_asset").asBoolean(false))
+      {
+        // The versions browser advertises videoversions content, so its view state cannot infer
+        // the episode autoplay preference. Check the underlying media type explicitly.
+        if (VIDEO::UTILS::IsAutoPlayNextItem(MediaTypeEpisode) &&
+            !g_partyModeManager.IsEnabled() && PlayEpisodeRangeSequence(asset, player, db))
+          return true;
+        return OnPlayMedia(MakeEpisodeRangePlaybackItem(*asset), player);
+      }
       return PlayItem(asset, player);
     }
+  }
+
+  if (pItem->GetProperty("episode_asset_selected").asBoolean(false) &&
+      pItem->GetProperty("episode_range_asset").asBoolean(false))
+  {
+    CVideoDatabase db;
+    if (VIDEO::UTILS::IsAutoPlayNextItem(MediaTypeEpisode) &&
+        !g_partyModeManager.IsEnabled() && db.Open() &&
+        PlayEpisodeRangeSequence(pItem, player, db))
+      return true;
+    return OnPlayMedia(MakeEpisodeRangePlaybackItem(*pItem), player);
   }
 
   if (URIUtils::IsStack(pItem->GetDynPath()))

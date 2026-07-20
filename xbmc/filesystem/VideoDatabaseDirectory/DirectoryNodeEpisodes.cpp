@@ -14,6 +14,8 @@
 #include "ServiceBroker.h"
 #include "resources/LocalizeStrings.h"
 #include "resources/ResourcesComponent.h"
+#include "settings/Settings.h"
+#include "settings/SettingsComponent.h"
 #include "utils/StringUtils.h"
 #include "video/VideoDatabase.h"
 #include "video/VideoDbUrl.h"
@@ -123,7 +125,10 @@ bool CDirectoryNodeEpisodes::GetContent(CFileItemList& items) const
       BuildPath(), items, params.GetGenreId(), params.GetYear(), params.GetActorId(),
       params.GetDirectorId(), params.GetTvShowId(), season, SortDescription(), details);
 
-  if (bSuccess && idSeason > 0 && videodatabase.HasSeasonRangeAssets(idSeason))
+  if (bSuccess && idSeason > 0 &&
+      CServiceBroker::GetSettingsComponent()->GetSettings()->GetBool(
+          CSettings::SETTING_VIDEOLIBRARY_SHOWEPISODERELEASES) &&
+      videodatabase.HasSeasonRangeAssets(idSeason))
   {
     auto releases{std::make_shared<CFileItem>(
         CServiceBroker::GetResourcesComponent().GetLocalizeStrings().Get(40813))};
@@ -143,5 +148,5 @@ bool CDirectoryNodeEpisodes::GetContent(CFileItemList& items) const
 
 NodeType CDirectoryNodeEpisodes::GetChildType() const
 {
-  return NodeType::EPISODES;
+  return NodeType::EPISODE_ASSETS;
 }

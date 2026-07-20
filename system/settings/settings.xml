@@ -1280,6 +1280,16 @@
           </constraints>
           <control type="list" format="string" />
         </setting>
+        <setting id="videolibrary.showunlocatedepisodediscs" type="boolean" label="40822" help="40823">
+          <level>2</level>
+          <default>true</default>
+          <control type="toggle" />
+        </setting>
+        <setting id="videolibrary.showepisodereleases" type="boolean" label="40825" help="40826">
+          <level>2</level>
+          <default>false</default>
+          <control type="toggle" />
+        </setting>
         <setting id="videolibrary.showemptytvshows" type="boolean" label="20471" help="36163">
           <level>2</level>
           <default>true</default>
