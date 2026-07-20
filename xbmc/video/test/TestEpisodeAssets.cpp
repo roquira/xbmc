@@ -1,0 +1,193 @@
+/*
+ *  Copyright (C) 2026 Team Kodi
+ *  This file is part of Kodi - https://kodi.tv
+ *
+ *  SPDX-License-Identifier: GPL-2.0-or-later
+ *  See LICENSES/README.md for more information.
+ */
+
+#include "FileItem.h"
+#include "filesystem/File.h"
+#include "filesystem/SpecialProtocol.h"
+#include "settings/AdvancedSettings.h"
+#include "utils/URIUtils.h"
+#include "video/VideoDatabase.h"
+#include "video/VideoDatabaseColumns.h"
+#include "video/VideoManagerTypes.h"
+
+#include <algorithm>
+#include <chrono>
+#include <string>
+#include <vector>
+
+#include <gtest/gtest.h>
+
+namespace
+{
+class EpisodeAssetSchemaDatabase : public CDatabase
+{
+protected:
+  void CreateTables() override
+  {
+    ExecuteQuery(
+        "CREATE TABLE path (idPath INTEGER PRIMARY KEY, strPath TEXT, dateAdded TEXT, "
+        "idParentPath INTEGER)");
+    ExecuteQuery(
+        "CREATE TABLE files (idFile INTEGER PRIMARY KEY, idPath INTEGER, strFilename TEXT, "
+        "playCount INTEGER, lastPlayed TEXT, dateAdded TEXT)");
+    ExecuteQuery("CREATE TABLE tvshow (idShow INTEGER PRIMARY KEY)");
+    ExecuteQuery(
+        "CREATE TABLE seasons (idSeason INTEGER PRIMARY KEY, idShow INTEGER, season INTEGER)");
+    ExecuteQuery(
+        "CREATE TABLE episode (idEpisode INTEGER PRIMARY KEY, idFile INTEGER, c12 TEXT, c13 "
+        "TEXT, idShow INTEGER, idSeason INTEGER)");
+    ExecuteQuery(
+        "CREATE TABLE art (art_id INTEGER PRIMARY KEY, media_id INTEGER, media_type TEXT, "
+        "type TEXT, url TEXT)");
+    ExecuteQuery(
+        "CREATE TABLE streamdetails (idFile INTEGER, iStreamType INTEGER, strVideoCodec TEXT, "
+        "fVideoAspect FLOAT, iVideoWidth INTEGER, iVideoHeight INTEGER, strAudioCodec TEXT, "
+        "iAudioChannels INTEGER, strAudioLanguage TEXT, strSubtitleLanguage TEXT, "
+        "iVideoDuration INTEGER, strStereoMode TEXT, strVideoLanguage TEXT, strHdrType TEXT, "
+        "strHdrDetail TEXT)");
+    ExecuteQuery(
+        "CREATE TABLE videoversiontype (id INTEGER PRIMARY KEY, name TEXT, owner INTEGER, "
+        "itemType INTEGER)");
+    ExecuteQuery(
+        "CREATE TABLE videoversion (idFile INTEGER PRIMARY KEY, idMedia INTEGER, media_type "
+        "TEXT, itemType INTEGER, idType INTEGER)");
+    ExecuteQuery(
+        "CREATE TABLE episodeassetcoverage (idFile INTEGER PRIMARY KEY, idShow INTEGER, "
+        "idSeason INTEGER, firstSeason INTEGER, firstEpisode INTEGER, lastSeason INTEGER, "
+        "lastEpisode INTEGER, disc INTEGER, hasLocator BOOLEAN)");
+    ExecuteQuery(
+        "CREATE TABLE episodeassetpreference (idEpisode INTEGER PRIMARY KEY, idFile INTEGER)");
+    ExecuteQuery(
+        "CREATE TABLE seasonreleasepreference (idSeason INTEGER PRIMARY KEY, idType INTEGER)");
+    ExecuteQuery(
+        "CREATE TABLE tvshowreleasepreference (idShow INTEGER PRIMARY KEY, idType INTEGER)");
+  }
+
+  void CreateAnalytics() override {}
+  int GetSchemaVersion() const override { return 1; }
+  const char* GetBaseDBName() const override { return "EpisodeAssetsTest"; }
+};
+
+class EpisodeAssetVideoDatabase : public CVideoDatabase
+{
+public:
+  bool CommitTransaction() override { return CDatabase::CommitTransaction(); }
+};
+
+class EpisodeAssetsTest : public testing::Test
+{
+protected:
+  void SetUp() override
+  {
+    m_settings.type = "sqlite3";
+    m_settings.host = CSpecialProtocol::TranslatePath("special://temp/");
+    m_databaseName = "EpisodeAssetsTest" + std::to_string(
+                                                   std::chrono::steady_clock::now()
+                                                       .time_since_epoch()
+                                                       .count());
+    EpisodeAssetSchemaDatabase schema;
+    ASSERT_EQ(CDatabase::ConnectionState::STATE_CONNECTED,
+              schema.Connect(m_databaseName, m_settings, true));
+    schema.Close();
+    ASSERT_EQ(CDatabase::ConnectionState::STATE_CONNECTED,
+              m_database.Connect(m_databaseName, m_settings, false));
+
+    ASSERT_TRUE(m_database.ExecuteQuery("INSERT INTO tvshow (idShow) VALUES(1)"));
+    ASSERT_TRUE(m_database.ExecuteQuery(
+        "INSERT INTO seasons (idSeason, idShow, season) VALUES(10, 1, 1)"));
+
+    m_fileA = m_database.AddFile("C:\\shows\\Show S01E01 [edition=A].mkv");
+    ASSERT_GT(m_fileA, 0);
+    ASSERT_TRUE(m_database.ExecuteQuery(m_database.PrepareSQL(
+        "INSERT INTO episode (idEpisode, idFile, c%02d, c%02d, idShow, idSeason) "
+        "VALUES(100, %i, '1', '1', 1, 10)",
+        VIDEODB_ID_EPISODE_SEASON, VIDEODB_ID_EPISODE_EPISODE, m_fileA)));
+  }
+
+  void TearDown() override
+  {
+    m_database.Close();
+    XFILE::CFile::Delete(
+        URIUtils::AddFileToFolder(m_settings.host, m_databaseName + ".db"));
+  }
+
+  DatabaseSettings m_settings;
+  std::string m_databaseName;
+  EpisodeAssetVideoDatabase m_database;
+  int m_fileA{-1};
+};
+} // unnamed namespace
+
+TEST_F(EpisodeAssetsTest, ExactVersionsUseDeterministicPreferenceOrder)
+{
+  EXPECT_EQ(100, m_database.GetEpisodeIdByNumbers(1, 1, 1));
+  EXPECT_EQ(-1, m_database.GetEpisodeIdByNumbers(1, 1, 2));
+
+  CFileItem versionA("C:\\shows\\Show S01E01 [edition=A].mkv", false);
+  CFileItem versionB("https://media.example/Show%20S01E01%20%5Bedition%3DB%5D.mkv", false);
+  ASSERT_TRUE(m_database.AddEpisodeVersion(100, "A", versionA));
+  ASSERT_TRUE(m_database.AddEpisodeVersion(100, "B", versionB));
+
+  std::vector<EpisodeAssetInfo> assets;
+  m_database.GetEpisodeAssets(100, assets, false);
+  ASSERT_EQ(2U, assets.size());
+
+  const auto versionBAsset{
+      std::find_if(assets.begin(), assets.end(),
+                   [](const auto& asset) { return asset.m_release == "B"; })};
+  ASSERT_NE(assets.end(), versionBAsset);
+  const int fileB{versionBAsset->m_fileId};
+
+  const int releaseA{assets[0].m_fileId == m_fileA ? assets[0].m_releaseId
+                                                    : assets[1].m_releaseId};
+  const int releaseB{assets[0].m_fileId == fileB ? assets[0].m_releaseId
+                                                 : assets[1].m_releaseId};
+
+  ASSERT_TRUE(m_database.SetTvShowPreferredRelease(1, releaseB));
+  EXPECT_EQ(fileB, m_database.ResolveEpisodeAssetId(100));
+
+  ASSERT_TRUE(m_database.SetSeasonPreferredRelease(10, releaseA));
+  EXPECT_EQ(m_fileA, m_database.ResolveEpisodeAssetId(100));
+
+  ASSERT_TRUE(m_database.SetEpisodeDefaultAsset(100, fileB));
+  EXPECT_EQ(fileB, m_database.ResolveEpisodeAssetId(100));
+
+  EXPECT_TRUE(m_database.SetEpisodeDefaultAsset(100, -1));
+  EXPECT_TRUE(m_database.SetSeasonPreferredRelease(10, -1));
+  EXPECT_TRUE(m_database.SetTvShowPreferredRelease(1, -1));
+}
+
+TEST_F(EpisodeAssetsTest, RangeWithoutLocatorIsStoredButNeverResolvedAsEpisode)
+{
+  EXPECT_FALSE(m_database.HasSeasonRangeAssets(10));
+
+  CFileItem version("C:\\shows\\Show S01E01.mkv", false);
+  ASSERT_TRUE(m_database.AddEpisodeVersion(100, "WEB-DL", version));
+
+  const std::string discPath{
+      "https://media.example/Show%20S01E01-E07%20%5Bedition%3DBlu-ray%5D/BDMV/index.bdmv"};
+  CFileItem disc(discPath, false);
+  ASSERT_TRUE(m_database.AddEpisodeRangeAsset(1, 10, 1, 1, 1, 7, 1, "Blu-ray", disc,
+                                              false));
+  EXPECT_TRUE(m_database.HasSeasonRangeAssets(10));
+
+  std::vector<EpisodeAssetInfo> assets;
+  m_database.GetEpisodeAssets(100, assets, true);
+  ASSERT_EQ(2U, assets.size());
+  const auto range{std::find_if(assets.begin(), assets.end(),
+                                [](const auto& asset) { return !asset.IsExact(); })};
+  ASSERT_NE(assets.end(), range);
+  EXPECT_FALSE(range->m_hasLocator);
+  EXPECT_EQ(discPath, range->m_path);
+
+  const auto exact{std::find_if(assets.begin(), assets.end(),
+                                [](const auto& asset) { return asset.IsExact(); })};
+  ASSERT_NE(assets.end(), exact);
+  EXPECT_EQ(exact->m_fileId, m_database.ResolveEpisodeAssetId(100));
+  EXPECT_NE(range->m_fileId, m_database.ResolveEpisodeAssetId(100));
+}

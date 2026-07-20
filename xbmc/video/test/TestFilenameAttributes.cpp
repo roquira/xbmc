@@ -141,6 +141,18 @@ TEST(TestFilenameAttributes, GetEdition)
   EXPECT_EQ("", fa.GetEdition());
 }
 
+TEST(TestFilenameAttributes, GetDisc)
+{
+  auto fa = CFilenameAttributes("Show - S01E01-E07 [disc=01]", nullptr);
+  EXPECT_EQ(1, fa.GetDisc());
+  fa = CFilenameAttributes("Show [disc=0]", nullptr);
+  EXPECT_EQ(-1, fa.GetDisc());
+  fa = CFilenameAttributes("Show [disc=one]", nullptr);
+  EXPECT_EQ(-1, fa.GetDisc());
+  fa = CFilenameAttributes("Show", nullptr);
+  EXPECT_EQ(-1, fa.GetDisc());
+}
+
 struct TestFilenameIdentifierData
 {
   std::string input;

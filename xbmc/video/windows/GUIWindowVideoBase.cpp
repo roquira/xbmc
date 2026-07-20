@@ -888,6 +888,29 @@ void CGUIWindowVideoBase::GetContextButtons(int itemNumber, CContextButtons &but
       {
         buttons.Add(CONTEXT_BUTTON_CHOOSE_PLAYLIST, 13424);
       }
+
+      if (item->HasVideoInfoTag() && item->GetVideoInfoTag()->m_type == MediaTypeEpisode &&
+          item->GetVideoInfoTag()->HasVideoVersions())
+      {
+        buttons.Add(CONTEXT_BUTTON_SET_EPISODE_VERSION, 40816);
+        if (m_database.GetEpisodeDefaultAsset(item->GetVideoInfoTag()->m_iDbId) > 0)
+          buttons.Add(CONTEXT_BUTTON_CLEAR_EPISODE_VERSION, 40817);
+      }
+    }
+
+    if (item->GetProperty("episode_release_group").asBoolean(false))
+    {
+      const int releaseId{item->GetProperty("episode_release_id").asInteger32()};
+      const int seasonId{item->GetProperty("episode_release_season_id").asInteger32()};
+      const int showId{item->GetProperty("episode_release_show_id").asInteger32()};
+      buttons.Add(m_database.GetSeasonPreferredRelease(seasonId) == releaseId
+                      ? CONTEXT_BUTTON_CLEAR_SEASON_RELEASE
+                      : CONTEXT_BUTTON_SET_SEASON_RELEASE,
+                  m_database.GetSeasonPreferredRelease(seasonId) == releaseId ? 40819 : 40818);
+      buttons.Add(m_database.GetTvShowPreferredRelease(showId) == releaseId
+                      ? CONTEXT_BUTTON_CLEAR_TVSHOW_RELEASE
+                      : CONTEXT_BUTTON_SET_TVSHOW_RELEASE,
+                  m_database.GetTvShowPreferredRelease(showId) == releaseId ? 40821 : 40820);
     }
   }
   CGUIMediaWindow::GetContextButtons(itemNumber, buttons);
@@ -953,6 +976,55 @@ bool CGUIWindowVideoBase::OnContextButton(int itemNumber, CONTEXT_BUTTON button)
     item->SetProperty("force_playlist_selection", true);
     return OnPlayMedia(itemNumber);
   }
+  case CONTEXT_BUTTON_SET_EPISODE_VERSION:
+  {
+    CFileItemList versions;
+    m_database.GetEpisodeVersions(item->GetVideoInfoTag()->m_iDbId, versions);
+    if (versions.IsEmpty())
+      return true;
+
+    CGUIDialogSelect* dialog{
+        CServiceBroker::GetGUI()->GetWindowManager().GetWindow<CGUIDialogSelect>(
+            WINDOW_DIALOG_SELECT)};
+    dialog->Reset();
+    dialog->SetHeading(CVariant{40816});
+    dialog->SetItems(versions);
+    dialog->Open();
+    if (dialog->IsConfirmed())
+    {
+      const auto selected{versions.Get(dialog->GetSelectedItem())};
+      m_database.SetEpisodeDefaultAsset(item->GetVideoInfoTag()->m_iDbId,
+                                        selected->GetVideoInfoTag()->m_iFileId);
+      Refresh(true);
+    }
+    return true;
+  }
+  case CONTEXT_BUTTON_CLEAR_EPISODE_VERSION:
+    m_database.SetEpisodeDefaultAsset(item->GetVideoInfoTag()->m_iDbId, -1);
+    Refresh(true);
+    return true;
+  case CONTEXT_BUTTON_SET_SEASON_RELEASE:
+    m_database.SetSeasonPreferredRelease(
+        item->GetProperty("episode_release_season_id").asInteger32(),
+        item->GetProperty("episode_release_id").asInteger32());
+    Refresh(true);
+    return true;
+  case CONTEXT_BUTTON_CLEAR_SEASON_RELEASE:
+    m_database.SetSeasonPreferredRelease(
+        item->GetProperty("episode_release_season_id").asInteger32(), -1);
+    Refresh(true);
+    return true;
+  case CONTEXT_BUTTON_SET_TVSHOW_RELEASE:
+    m_database.SetTvShowPreferredRelease(
+        item->GetProperty("episode_release_show_id").asInteger32(),
+        item->GetProperty("episode_release_id").asInteger32());
+    Refresh(true);
+    return true;
+  case CONTEXT_BUTTON_CLEAR_TVSHOW_RELEASE:
+    m_database.SetTvShowPreferredRelease(
+        item->GetProperty("episode_release_show_id").asInteger32(), -1);
+    Refresh(true);
+    return true;
   default:
     break;
   }
@@ -1092,6 +1164,49 @@ void CGUIWindowVideoBase::LoadPlayList(const std::string& strPlayList,
 bool CGUIWindowVideoBase::PlayItem(const std::shared_ptr<CFileItem>& pItem,
                                    const std::string& player)
 {
+  if (pItem->HasVideoInfoTag() && pItem->GetVideoInfoTag()->m_type == MediaTypeEpisode &&
+      pItem->GetVideoInfoTag()->m_iDbId > 0 &&
+      !pItem->GetProperty("episode_asset_selected").asBoolean(false))
+  {
+    CVideoDatabase db;
+    CFileItemList versions;
+    if (db.Open())
+      db.GetEpisodeVersions(pItem->GetVideoInfoTag()->m_iDbId, versions);
+
+    if (versions.IsEmpty())
+    {
+      if (db.HasSeasonRangeAssets(pItem->GetVideoInfoTag()->m_iIdSeason))
+      {
+        HELPERS::ShowOKDialogText(CVariant{40811}, CVariant{40812});
+        return true;
+      }
+    }
+    else
+    {
+      int selected{0};
+      if (versions.Size() > 1)
+      {
+        CGUIDialogSelect* dialog{
+            CServiceBroker::GetGUI()->GetWindowManager().GetWindow<CGUIDialogSelect>(
+                WINDOW_DIALOG_SELECT)};
+        dialog->Reset();
+        dialog->SetHeading(CVariant{40810});
+        dialog->SetItems(versions);
+        dialog->Open();
+        if (!dialog->IsConfirmed())
+          return true;
+        selected = dialog->GetSelectedItem();
+      }
+
+      auto asset{std::make_shared<CFileItem>(*versions.Get(selected))};
+      asset->SetProperty("episode_asset_selected", true);
+      asset->SetProperty("original_listitem_url", pItem->GetPath());
+      asset->SetProperty("ParentPath", pItem->GetProperty("ParentPath"));
+      asset->SetStartOffset(pItem->GetStartOffset());
+      return PlayItem(asset, player);
+    }
+  }
+
   if (URIUtils::IsStack(pItem->GetDynPath()))
   {
     VIDEO::UTILS::PlayItem(pItem, player);
@@ -1162,6 +1277,12 @@ bool CGUIWindowVideoBase::PlayItem(const std::shared_ptr<CFileItem>& pItem,
 
     // load the playlist the old way
     LoadPlayList(pItem->GetDynPath(), PLAYLIST::Id::TYPE_VIDEO);
+    return true;
+  }
+  else if (pItem->GetProperty("episode_asset_selected").asBoolean(false) && m_guiState.get() &&
+           m_guiState->AutoPlayNextItem() && !g_partyModeManager.IsEnabled())
+  {
+    VIDEO::UTILS::PlayItem(pItem, player, ContentUtils::PlayMode::CHECK_AUTO_PLAY_NEXT_ITEM);
     return true;
   }
   else if (m_guiState.get() && m_guiState->AutoPlayNextItem() && !g_partyModeManager.IsEnabled())

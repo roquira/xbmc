@@ -143,6 +143,26 @@ void CAsyncGetItemsForPlaylist::GetItemsForPlaylist(const std::shared_ptr<CFileI
   if (item->IsParentFolder() || !item->CanQueue() || item->IsRAR() || item->IsZIP())
     return;
 
+  // Keep playlists logical until they are built, then resolve every episode silently. This makes
+  // autoplay honor release preferences without ever opening the manual version chooser.
+  if (!item->IsFolder() && item->HasVideoInfoTag() &&
+      item->GetVideoInfoTag()->m_type == MediaTypeEpisode &&
+      item->GetVideoInfoTag()->m_iDbId > 0 &&
+      !item->GetProperty("episode_asset_selected").asBoolean(false))
+  {
+    CVideoDatabase db;
+    CFileItem resolved;
+    if (!db.Open() || !db.ResolveEpisodeAsset(item->GetVideoInfoTag()->m_iDbId, resolved))
+      return; // Ranged discs without exact locators are deliberately not autoplay candidates.
+
+    resolved.SetProperty("episode_asset_selected", true);
+    resolved.SetProperty("original_listitem_url", item->GetPath());
+    resolved.SetProperty("ParentPath", item->GetProperty("ParentPath"));
+    resolved.SetStartOffset(item->GetStartOffset());
+    GetItemsForPlaylist(std::make_shared<CFileItem>(std::move(resolved)));
+    return;
+  }
+
   if (item->IsFolder())
   {
     if (!item->IsPlugin())
@@ -366,8 +386,19 @@ void AddItemToPlayListAndPlay(const std::shared_ptr<CFileItem>& itemToQueue,
   {
     for (const std::shared_ptr<CFileItem>& queuedItem : queuedItems)
     {
-      if (queuedItem->IsSamePath(itemToPlay.get()))
+      const std::string queuedLogicalUrl{
+          queuedItem->GetProperty("original_listitem_url").asString()};
+      const std::string selectedLogicalUrl{
+          itemToPlay->GetProperty("original_listitem_url").asString()};
+      if (queuedItem->IsSamePath(itemToPlay.get()) ||
+          queuedLogicalUrl == itemToPlay->GetPath() ||
+          (!selectedLogicalUrl.empty() && queuedLogicalUrl == selectedLogicalUrl))
       {
+        if (itemToPlay->GetProperty("episode_asset_selected").asBoolean(false) &&
+            !selectedLogicalUrl.empty() && queuedLogicalUrl == selectedLogicalUrl)
+        {
+          *queuedItem = *itemToPlay;
+        }
         queuedItem->SetStartPartNumber(itemToPlay->GetStartPartNumber());
         break;
       }

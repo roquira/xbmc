@@ -391,6 +391,7 @@ int CVideoDatabase::AddPath(const std::string& strPath, const std::string &paren
         strSQL=PrepareSQL("insert into path (idPath, strPath, idParentPath) values (NULL, '%s', %i)", strPath1.c_str(), idParentPath);
     }
     m_pDS->exec(strSQL);
+
     idPath = static_cast<int>(m_pDS->lastinsertid());
     return idPath;
   }
@@ -1059,8 +1060,9 @@ int CVideoDatabase::GetEpisodeIdByNumbers(int idShow, int season, int episode) c
 
   const std::string id{GetSingleValue(
       "episode", "idEpisode",
-      PrepareSQL("idShow=%i AND c%02d=%i AND c%02d=%i ORDER BY idEpisode LIMIT 1", idShow,
-                 VIDEODB_ID_EPISODE_SEASON, season, VIDEODB_ID_EPISODE_EPISODE, episode))};
+      PrepareSQL("idShow=%i AND c%02d=%i AND c%02d=%i", idShow, VIDEODB_ID_EPISODE_SEASON,
+                 season, VIDEODB_ID_EPISODE_EPISODE, episode),
+      "idEpisode")};
   return id.empty() ? -1 : std::atoi(id.c_str());
 }
 
@@ -4907,6 +4909,16 @@ CVideoInfoTag CVideoDatabase::GetDetailsForEpisode(const dbiplus::sql_record* co
                     record->at(VIDEODB_DETAILS_EPISODE_RATING_TYPE).get_asString(), true);
   details.SetUniqueID(record->at(VIDEODB_DETAILS_EPISODE_UNIQUEID_VALUE).get_asString(), record->at(VIDEODB_DETAILS_EPISODE_UNIQUEID_TYPE).get_asString(), true);
 
+  const int versionCount{GetSingleValueInt(PrepareSQL(
+      "SELECT COUNT(1) FROM videoversion WHERE idMedia=%i AND media_type='%s' AND itemType=%i",
+      details.m_iDbId, MediaTypeEpisode, VideoAssetType::VERSION), *m_pDS2)};
+  details.SetHasVideoVersions(versionCount > 1);
+  const int preferredFile{GetSingleValueInt(
+      PrepareSQL("SELECT idFile FROM episodeassetpreference WHERE idEpisode=%i",
+                 details.m_iDbId),
+      *m_pDS2)};
+  details.SetIsDefaultVideoVersion(preferredFile < 1 || preferredFile == details.m_iFileId);
+
   if (getDetails)
   {
     if (getDetails & VideoDbDetailsCast)
@@ -6305,6 +6317,28 @@ CDateTime CVideoDatabase::SetPlayCount(const CFileItem& item, int count, const C
     }
 
     m_pDS->exec(strSQL);
+
+    // Episode watched state belongs to the logical episode. A selected alternate asset keeps
+    // its own file state, but the episode's stable file must reflect the same watched value.
+    if (item.HasVideoInfoTag() && item.GetVideoInfoTag()->m_type == MediaTypeEpisode &&
+        item.GetVideoInfoTag()->m_iDbId > 0)
+    {
+      const int logicalFile{GetSingleValueInt(PrepareSQL(
+          "SELECT idFile FROM episode WHERE idEpisode=%i", item.GetVideoInfoTag()->m_iDbId))};
+      if (logicalFile > 0 && logicalFile != id)
+      {
+        if (count)
+          strSQL = PrepareSQL("update files set playCount=%i,lastPlayed='%s' where idFile=%i",
+                              count, lastPlayed.GetAsDBDateTime().c_str(), logicalFile);
+        else if (!date.IsValid())
+          strSQL = PrepareSQL("update files set playCount=NULL,lastPlayed=NULL where idFile=%i",
+                              logicalFile);
+        else
+          strSQL = PrepareSQL("update files set playCount=NULL,lastPlayed='%s' where idFile=%i",
+                              lastPlayed.GetAsDBDateTime().c_str(), logicalFile);
+        m_pDS->exec(strSQL);
+      }
+    }
 
     // We only need to announce changes to video items in the library
     if (item.HasVideoInfoTag() && item.GetVideoInfoTag()->m_iDbId > 0)
@@ -12385,10 +12419,10 @@ void CVideoDatabase::GetEpisodeVersions(int idEpisode, CFileItemList& items)
   }
 }
 
-bool CVideoDatabase::ResolveEpisodeAsset(int idEpisode, CFileItem& item)
+int CVideoDatabase::ResolveEpisodeAssetId(int idEpisode)
 {
   if (!m_pDB || !m_pDS)
-    return false;
+    return -1;
 
   int idShow{-1};
   int idSeason{-1};
@@ -12400,7 +12434,7 @@ bool CVideoDatabase::ResolveEpisodeAsset(int idEpisode, CFileItem& item)
     if (m_pDS->eof())
     {
       m_pDS->close();
-      return false;
+      return -1;
     }
     idShow = m_pDS->fv(0).get_asInt();
     idSeason = m_pDS->fv(1).get_asInt();
@@ -12410,13 +12444,13 @@ bool CVideoDatabase::ResolveEpisodeAsset(int idEpisode, CFileItem& item)
   catch (...)
   {
     CLog::LogF(LOGERROR, "failed to read episode {}", idEpisode);
-    return false;
+    return -1;
   }
 
   std::vector<EpisodeAssetInfo> assets;
   GetEpisodeAssets(idEpisode, assets, false);
   if (assets.empty())
-    return false;
+    return -1;
 
   int selectedFile{-1};
   const int explicitFile{GetSingleValueInt(
@@ -12442,6 +12476,15 @@ bool CVideoDatabase::ResolveEpisodeAsset(int idEpisode, CFileItem& item)
     selectedFile = stableFile;
   if (selectedFile < 0)
     selectedFile = assets.front().m_fileId;
+
+  return selectedFile;
+}
+
+bool CVideoDatabase::ResolveEpisodeAsset(int idEpisode, CFileItem& item)
+{
+  const int selectedFile{ResolveEpisodeAssetId(idEpisode)};
+  if (selectedFile < 0)
+    return false;
 
   CFileItemList versions;
   GetEpisodeVersions(idEpisode, versions);
@@ -12505,6 +12548,13 @@ bool CVideoDatabase::SetTvShowPreferredRelease(int idShow, int idRelease)
       idRelease));
 }
 
+int CVideoDatabase::GetEpisodeDefaultAsset(int idEpisode) const
+{
+  const std::string id{GetSingleValue("episodeassetpreference", "idFile",
+                                      PrepareSQL("idEpisode=%i", idEpisode))};
+  return id.empty() ? -1 : std::atoi(id.c_str());
+}
+
 int CVideoDatabase::GetSeasonPreferredRelease(int idSeason) const
 {
   const std::string id{GetSingleValue("seasonreleasepreference", "idType",
@@ -12522,7 +12572,7 @@ int CVideoDatabase::GetTvShowPreferredRelease(int idShow) const
 bool CVideoDatabase::HasSeasonRangeAssets(int idSeason) const
 {
   return !GetSingleValue("episodeassetcoverage", "idFile",
-                         PrepareSQL("idSeason=%i LIMIT 1", idSeason))
+                         PrepareSQL("idSeason=%i", idSeason))
               .empty();
 }
 

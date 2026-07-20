@@ -25310,3 +25310,75 @@ msgstr ""
 msgctxt "#40802"
 msgid "If enabled, a confirmation dialog will be displayed when files shall be deleted. If disabled, files will be deleted without user confirmation."
 msgstr ""
+
+#. Heading for choosing one exact playable asset of a TV episode
+#: xbmc/video/windows/GUIWindowVideoBase.cpp
+msgctxt "#40810"
+msgid "Play episode version"
+msgstr ""
+
+#. Heading shown when a logical episode is covered only by a complete disc
+#: xbmc/video/windows/GUIWindowVideoBase.cpp
+msgctxt "#40811"
+msgid "Episode is not directly playable"
+msgstr ""
+
+#. Explanation shown for a complete disc without an episode locator
+#: xbmc/video/windows/GUIWindowVideoBase.cpp
+msgctxt "#40812"
+msgid "This episode is covered by a complete disc without a reliable episode locator. Play the disc from Releases & discs."
+msgstr ""
+
+#. Folder in a TV season containing complete release discs
+#: xbmc/filesystem/VideoDatabaseDirectory/DirectoryNodeEpisodes.cpp
+msgctxt "#40813"
+msgid "Releases & discs"
+msgstr ""
+
+#. Label for a numbered release disc, {} is the disc number
+#: xbmc/filesystem/VideoDatabaseDirectory/DirectoryNodeEpisodes.cpp
+msgctxt "#40814"
+msgid "Disc {}"
+msgstr ""
+
+#. Label for a release disc with no known number
+#: xbmc/filesystem/VideoDatabaseDirectory/DirectoryNodeEpisodes.cpp
+msgctxt "#40815"
+msgid "Disc"
+msgstr ""
+
+#. Context action and heading for choosing an episode's default exact version
+#: xbmc/video/windows/GUIWindowVideoBase.cpp
+msgctxt "#40816"
+msgid "Set default episode version"
+msgstr ""
+
+#. Context action for removing an episode's explicit default exact version
+#: xbmc/video/windows/GUIWindowVideoBase.cpp
+msgctxt "#40817"
+msgid "Clear default episode version"
+msgstr ""
+
+#. Context action on a release group
+#: xbmc/video/windows/GUIWindowVideoBase.cpp
+msgctxt "#40818"
+msgid "Prefer this release for the season"
+msgstr ""
+
+#. Context action on the preferred season release group
+#: xbmc/video/windows/GUIWindowVideoBase.cpp
+msgctxt "#40819"
+msgid "Clear season release preference"
+msgstr ""
+
+#. Context action on a release group
+#: xbmc/video/windows/GUIWindowVideoBase.cpp
+msgctxt "#40820"
+msgid "Prefer this release for the show"
+msgstr ""
+
+#. Context action on the preferred show release group
+#: xbmc/video/windows/GUIWindowVideoBase.cpp
+msgctxt "#40821"
+msgid "Clear show release preference"
+msgstr ""

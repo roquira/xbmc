@@ -1039,11 +1039,13 @@ public:
                         std::vector<EpisodeAssetInfo>& assets,
                         bool includeRanges = true);
   void GetEpisodeVersions(int idEpisode, CFileItemList& items);
+  int ResolveEpisodeAssetId(int idEpisode);
   bool ResolveEpisodeAsset(int idEpisode, CFileItem& item);
 
   bool SetEpisodeDefaultAsset(int idEpisode, int idFile);
   bool SetSeasonPreferredRelease(int idSeason, int idRelease);
   bool SetTvShowPreferredRelease(int idShow, int idRelease);
+  int GetEpisodeDefaultAsset(int idEpisode) const;
   int GetSeasonPreferredRelease(int idSeason) const;
   int GetTvShowPreferredRelease(int idShow) const;
 

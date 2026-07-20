@@ -70,6 +70,20 @@ const auto mediapath_tests = std::array{
 
 INSTANTIATE_TEST_SUITE_P(TestVideoUtils, OpticalMediaPathTest, testing::ValuesIn(mediapath_tests));
 
+TEST(TestVideoUtils, DiscMetadataExcludedFromScan)
+{
+  EXPECT_TRUE(VIDEO::UTILS::IsDiscMetadataExcludedFromScan(
+      "D:\\Show\\Disc\\CERTIFICATE\\id.bdmv"));
+  EXPECT_TRUE(VIDEO::UTILS::IsDiscMetadataExcludedFromScan(
+      "https://media.example/Show/BDMV/BACKUP/index.bdmv"));
+  EXPECT_TRUE(VIDEO::UTILS::IsDiscMetadataExcludedFromScan(
+      "https://media.example/Show/CERTIFICATE/%69d.bdmv"));
+  EXPECT_FALSE(VIDEO::UTILS::IsDiscMetadataExcludedFromScan(
+      "https://media.example/Show/BDMV/index.bdmv"));
+  EXPECT_FALSE(VIDEO::UTILS::IsDiscMetadataExcludedFromScan(
+      "D:\\Show\\Disc\\BDMV\\STREAM\\00001.m2ts"));
+}
+
 TEST_P(TrailerTest, FindTrailer)
 {
   std::string temp_path;
