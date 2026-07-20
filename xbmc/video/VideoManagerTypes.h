@@ -49,3 +49,29 @@ struct VideoAssetInfo
   MediaType m_mediaType{MediaTypeNone};
   VideoAssetType m_assetType{VideoAssetType::UNKNOWN};
 };
+
+/*! \brief A playable file associated with an episode or an episode range.
+ *
+ * Exact assets have m_episodeId set and no numeric coverage. Range assets have
+ * m_episodeId == -1 and explicit inclusive coverage. m_hasLocator is reserved
+ * for a future exact playlist/title/chapter locator; range assets without one
+ * are never eligible for ordinary episode autoplay.
+ */
+struct EpisodeAssetInfo
+{
+  int m_fileId{-1};
+  int m_episodeId{-1};
+  int m_showId{-1};
+  int m_seasonId{-1};
+  int m_releaseId{-1};
+  std::string m_release;
+  std::string m_path;
+  int m_firstSeason{-1};
+  int m_firstEpisode{-1};
+  int m_lastSeason{-1};
+  int m_lastEpisode{-1};
+  int m_disc{-1};
+  bool m_hasLocator{false};
+
+  bool IsExact() const { return m_episodeId >= 0; }
+};

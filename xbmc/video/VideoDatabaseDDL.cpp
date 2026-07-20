@@ -194,6 +194,18 @@ void CVideoDatabaseDDL::CreateTables(CDatabase& db)
   db.ExecuteQuery(
       "CREATE TABLE videoversion (idFile INTEGER PRIMARY KEY, idMedia INTEGER, media_type "
       "TEXT, itemType INTEGER, idType INTEGER)");
+
+  CLog::Log(LOGINFO, "create episode asset coverage and preference tables");
+  db.ExecuteQuery(
+      "CREATE TABLE episodeassetcoverage (idFile INTEGER PRIMARY KEY, idShow INTEGER, "
+      "idSeason INTEGER, firstSeason INTEGER, firstEpisode INTEGER, lastSeason INTEGER, "
+      "lastEpisode INTEGER, disc INTEGER, hasLocator BOOLEAN)");
+  db.ExecuteQuery(
+      "CREATE TABLE episodeassetpreference (idEpisode INTEGER PRIMARY KEY, idFile INTEGER)");
+  db.ExecuteQuery(
+      "CREATE TABLE seasonreleasepreference (idSeason INTEGER PRIMARY KEY, idType INTEGER)");
+  db.ExecuteQuery(
+      "CREATE TABLE tvshowreleasepreference (idShow INTEGER PRIMARY KEY, idType INTEGER)");
 }
 
 void CVideoDatabaseDDL::CreateLinkIndex(CDatabase& db, const std::string& table)
@@ -291,6 +303,11 @@ void CVideoDatabaseDDL::CreateIndices(CDatabase& db)
   db.ExecuteQuery("CREATE INDEX ix_actor_link_3 ON actor_link (media_type(20))");
 
   db.ExecuteQuery("CREATE INDEX ix_videoversion ON videoversion (idMedia, media_type(20))");
+  db.ExecuteQuery(
+      "CREATE INDEX ix_episodeassetcoverage_show ON episodeassetcoverage "
+      "(idShow, firstSeason, lastSeason)");
+  db.ExecuteQuery(
+      "CREATE INDEX ix_episodeassetcoverage_season ON episodeassetcoverage (idSeason)");
 
   db.ExecuteQuery(
       db.PrepareSQL("CREATE INDEX ix_movie_title ON movie (c%02d(255))", VIDEODB_ID_TITLE));
@@ -329,6 +346,8 @@ void CVideoDatabaseDDL::CreateTriggers(CDatabase& db)
                   "DELETE FROM tag_link WHERE media_id=old.idShow AND media_type='tvshow'; "
                   "DELETE FROM rating WHERE media_id=old.idShow AND media_type='tvshow'; "
                   "DELETE FROM uniqueid WHERE media_id=old.idShow AND media_type='tvshow'; "
+                  "DELETE FROM tvshowreleasepreference WHERE idShow=old.idShow; "
+                  "DELETE FROM episodeassetcoverage WHERE idShow=old.idShow; "
                   "END");
   db.ExecuteQuery(
       "CREATE TRIGGER delete_musicvideo AFTER DELETE ON musicvideo FOR EACH ROW BEGIN "
@@ -348,9 +367,14 @@ void CVideoDatabaseDDL::CreateTriggers(CDatabase& db)
       "DELETE FROM art WHERE media_id=old.idEpisode AND media_type='episode'; "
       "DELETE FROM rating WHERE media_id=old.idEpisode AND media_type='episode'; "
       "DELETE FROM uniqueid WHERE media_id=old.idEpisode AND media_type='episode'; "
+      "DELETE FROM episodeassetpreference WHERE idEpisode=old.idEpisode; "
+      "DELETE FROM videoversion WHERE idMedia=old.idEpisode AND media_type='episode'; "
       "END");
   db.ExecuteQuery("CREATE TRIGGER delete_season AFTER DELETE ON seasons FOR EACH ROW BEGIN "
                   "DELETE FROM art WHERE media_id=old.idSeason AND media_type='season'; "
+                  "DELETE FROM seasonreleasepreference WHERE idSeason=old.idSeason; "
+                  "DELETE FROM episodeassetcoverage WHERE idSeason=old.idSeason; "
+                  "DELETE FROM videoversion WHERE idMedia=old.idSeason AND media_type='season'; "
                   "END");
   db.ExecuteQuery("CREATE TRIGGER delete_set AFTER DELETE ON `sets` FOR EACH ROW BEGIN "
                   "DELETE FROM art WHERE media_id=old.idSet AND media_type='set'; "
@@ -370,12 +394,16 @@ void CVideoDatabaseDDL::CreateTriggers(CDatabase& db)
                   "DELETE FROM stacktimes WHERE idFile=old.idFile; "
                   "DELETE FROM streamdetails WHERE idFile=old.idFile; "
                   "DELETE FROM videoversion WHERE idFile=old.idFile; "
+                  "DELETE FROM episodeassetcoverage WHERE idFile=old.idFile; "
+                  "DELETE FROM episodeassetpreference WHERE idFile=old.idFile; "
                   "DELETE FROM art WHERE media_id=old.idFile AND media_type='videoversion'; "
                   "END");
   db.ExecuteQuery(
       "CREATE TRIGGER delete_videoversion AFTER DELETE ON videoversion FOR EACH ROW BEGIN "
       "DELETE FROM art WHERE media_id=old.idFile AND media_type='videoversion'; "
       "DELETE FROM streamdetails WHERE idFile=old.idFile; "
+      "DELETE FROM episodeassetcoverage WHERE idFile=old.idFile; "
+      "DELETE FROM episodeassetpreference WHERE idFile=old.idFile; "
       "END");
 }
 

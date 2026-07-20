@@ -1422,9 +1422,35 @@ void CVideoDatabase::UpdateTables(int iVersion)
     }
     m_pDS->close();
   }
+
+  if (iVersion < 148)
+  {
+    constexpr int VideoAssetType_VERSION = 1;
+    constexpr int VIDEO_VERSION_ID_DEFAULT = 40400;
+
+    m_pDS->exec(
+        "CREATE TABLE episodeassetcoverage (idFile INTEGER PRIMARY KEY, idShow INTEGER, "
+        "idSeason INTEGER, firstSeason INTEGER, firstEpisode INTEGER, lastSeason INTEGER, "
+        "lastEpisode INTEGER, disc INTEGER, hasLocator BOOLEAN)");
+    m_pDS->exec(
+        "CREATE TABLE episodeassetpreference (idEpisode INTEGER PRIMARY KEY, idFile INTEGER)");
+    m_pDS->exec(
+        "CREATE TABLE seasonreleasepreference (idSeason INTEGER PRIMARY KEY, idType INTEGER)");
+    m_pDS->exec(
+        "CREATE TABLE tvshowreleasepreference (idShow INTEGER PRIMARY KEY, idType INTEGER)");
+
+    // Existing episode files are exact playable assets. Keep episode.idFile as
+    // the stable default and seed only files not already owned by another asset.
+    m_pDS->exec(PrepareSQL(
+        "INSERT INTO videoversion (idFile, idMedia, media_type, itemType, idType) "
+        "SELECT episode.idFile, episode.idEpisode, 'episode', %i, %i "
+        "FROM episode LEFT JOIN videoversion ON videoversion.idFile = episode.idFile "
+        "WHERE videoversion.idFile IS NULL",
+        VideoAssetType_VERSION, VIDEO_VERSION_ID_DEFAULT));
+  }
 }
 
 int CVideoDatabase::GetSchemaVersion() const
 {
-  return 147;
+  return 148;
 }

@@ -38,6 +38,7 @@ class CGUIDialogProgressBarHandle;
 class TiXmlNode;
 
 struct VideoAssetInfo;
+struct EpisodeAssetInfo;
 
 enum class VideoAssetTypeOwner;
 enum class VideoAssetType;
@@ -306,6 +307,7 @@ public:
   int GetPathId(const std::string& strPath);
   int GetTvShowId(const std::string& strPath);
   int GetEpisodeId(const std::string& strFilenameAndPath, int idEpisode=-1, int idSeason=-1); // idEpisode, idSeason are used for multipart episodes as hints
+  int GetEpisodeIdByNumbers(int idShow, int season, int episode) const;
   int GetSeasonId(int idShow, int season) const;
 
   void GetEpisodesByBlurayPath(const std::string& path, std::vector<CVideoInfoTag>& episodes);
@@ -1017,6 +1019,38 @@ public:
                            const Filter& filter = Filter());
   VideoAssetInfo GetVideoVersionInfo(const std::string& filenameAndPath);
   bool UpdateAssetsOwner(const std::string& mediaType, int dbIdSource, int dbIdTarget);
+
+  /*! \brief Add an exact playable file for an existing logical episode. */
+  bool AddEpisodeVersion(int idEpisode, const std::string& release, CFileItem& item);
+
+  /*! \brief Add one season-owned asset with explicit inclusive episode coverage. */
+  bool AddEpisodeRangeAsset(int idShow,
+                            int idSeason,
+                            int firstSeason,
+                            int firstEpisode,
+                            int lastSeason,
+                            int lastEpisode,
+                            int disc,
+                            const std::string& release,
+                            CFileItem& item,
+                            bool hasLocator = false);
+
+  void GetEpisodeAssets(int idEpisode,
+                        std::vector<EpisodeAssetInfo>& assets,
+                        bool includeRanges = true);
+  void GetEpisodeVersions(int idEpisode, CFileItemList& items);
+  bool ResolveEpisodeAsset(int idEpisode, CFileItem& item);
+
+  bool SetEpisodeDefaultAsset(int idEpisode, int idFile);
+  bool SetSeasonPreferredRelease(int idSeason, int idRelease);
+  bool SetTvShowPreferredRelease(int idShow, int idRelease);
+  int GetSeasonPreferredRelease(int idSeason) const;
+  int GetTvShowPreferredRelease(int idShow) const;
+
+  bool HasSeasonRangeAssets(int idSeason) const;
+  void GetSeasonRangeAssets(int idSeason,
+                            int idRelease,
+                            std::vector<EpisodeAssetInfo>& assets);
 
   int GetMovieId(const std::string& strFilenameAndPath);
   std::string GetMovieTitle(int idMovie);
