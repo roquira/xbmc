@@ -11,6 +11,7 @@
 #include "PlayListPlayer.h"
 #include "ServiceBroker.h"
 #include "TextureCache.h"
+#include "XBDateTime.h"
 #include "cores/RetroPlayer/RetroPlayerUtils.h"
 #include "dialogs/GUIDialogFileBrowser.h"
 #include "interfaces/AnnouncementManager.h"
@@ -18,9 +19,11 @@
 #include "messaging/helpers/DialogHelper.h"
 #include "messaging/helpers/DialogOKHelper.h"
 #include "music/MusicLibraryQueue.h"
+#include "music/infoscanner/MusicInfoScanner.h"
 #include "resources/LocalizeStrings.h"
 #include "resources/ResourcesComponent.h"
 #include "settings/Settings.h"
+#include "settings/SettingsComponent.h"
 #include "settings/dialogs/GUIDialogLibExportSettings.h"
 #include "settings/lib/Setting.h"
 #include "storage/MediaManager.h"
@@ -32,6 +35,7 @@
 #include "video/VideoDatabase.h"
 #include "video/VideoLibraryQueue.h"
 
+#include <chrono>
 #include <limits.h>
 #include <mutex>
 #include <string>
@@ -41,10 +45,28 @@ using namespace KODI::MESSAGING;
 
 using KODI::MESSAGING::HELPERS::DialogResponse;
 
+CMediaSettings::CMediaSettings()
+  : m_videoLibraryUpdateTimer([this]() { OnScheduledLibraryUpdate(LibraryType::VIDEO); }),
+    m_musicLibraryUpdateTimer([this]() { OnScheduledLibraryUpdate(LibraryType::MUSIC); })
+{
+}
+
 CMediaSettings& CMediaSettings::GetInstance()
 {
   static CMediaSettings sMediaSettings;
   return sMediaSettings;
+}
+
+void CMediaSettings::OnSettingsLoaded()
+{
+  ScheduleLibraryUpdate(LibraryType::VIDEO);
+  ScheduleLibraryUpdate(LibraryType::MUSIC);
+}
+
+void CMediaSettings::OnSettingsUnloaded()
+{
+  m_videoLibraryUpdateTimer.Stop(true);
+  m_musicLibraryUpdateTimer.Stop(true);
 }
 
 bool CMediaSettings::Load(const TiXmlNode *settings)
@@ -290,7 +312,9 @@ void CMediaSettings::OnSettingAction(const std::shared_ptr<const CSetting>& sett
     return;
 
   const std::string &settingId = setting->GetId();
-  if (settingId == CSettings::SETTING_MUSICLIBRARY_CLEANUP)
+  if (settingId == CSettings::SETTING_MUSICLIBRARY_UPDATE)
+    UpdateLibrary(LibraryType::MUSIC, true);
+  else if (settingId == CSettings::SETTING_MUSICLIBRARY_CLEANUP)
   {
     if (HELPERS::ShowYesNoDialogText(CVariant{313}, CVariant{333}) == DialogResponse::CHOICE_YES)
     {
@@ -325,6 +349,8 @@ void CMediaSettings::OnSettingAction(const std::shared_ptr<const CSetting>& sett
       CMusicLibraryQueue::GetInstance().ImportLibrary(path, true);
     }
   }
+  else if (settingId == CSettings::SETTING_VIDEOLIBRARY_UPDATE)
+    UpdateLibrary(LibraryType::VIDEO, true);
   else if (settingId == CSettings::SETTING_VIDEOLIBRARY_CLEANUP)
   {
     if (HELPERS::ShowYesNoDialogText(CVariant{313}, CVariant{333}) == DialogResponse::CHOICE_YES)
@@ -363,8 +389,114 @@ void CMediaSettings::OnSettingChanged(const std::shared_ptr<const CSetting>& set
   if (!setting)
     return;
 
-  if (setting->GetId() == CSettings::SETTING_VIDEOLIBRARY_SHOWUNWATCHEDPLOTS)
+  const std::string& settingId = setting->GetId();
+  if (settingId == CSettings::SETTING_VIDEOLIBRARY_SHOWUNWATCHEDPLOTS)
     CServiceBroker::GetAnnouncementManager()->Announce(ANNOUNCEMENT::VideoLibrary, "OnRefresh");
+  else if (settingId == CSettings::SETTING_VIDEOLIBRARY_SCHEDULEUPDATE ||
+           settingId == CSettings::SETTING_VIDEOLIBRARY_SCHEDULETYPE ||
+           settingId == CSettings::SETTING_VIDEOLIBRARY_SCHEDULEINTERVAL ||
+           settingId == CSettings::SETTING_VIDEOLIBRARY_SCHEDULETIME)
+    ScheduleLibraryUpdate(LibraryType::VIDEO);
+  else if (settingId == CSettings::SETTING_MUSICLIBRARY_SCHEDULEUPDATE ||
+           settingId == CSettings::SETTING_MUSICLIBRARY_SCHEDULETYPE ||
+           settingId == CSettings::SETTING_MUSICLIBRARY_SCHEDULEINTERVAL ||
+           settingId == CSettings::SETTING_MUSICLIBRARY_SCHEDULETIME)
+    ScheduleLibraryUpdate(LibraryType::MUSIC);
+}
+
+bool CMediaSettings::UpdateLibrary(LibraryType library, bool userInitiated)
+{
+  if (library == LibraryType::VIDEO)
+  {
+    if (CVideoLibraryQueue::GetInstance().IsRunning())
+    {
+      if (userInitiated)
+        HELPERS::ShowOKDialogText(CVariant{653}, CVariant{14057});
+      return false;
+    }
+
+    CVideoLibraryQueue::GetInstance().ScanLibrary("", false, userInitiated);
+    return true;
+  }
+
+  if (CMusicLibraryQueue::GetInstance().IsRunning())
+  {
+    if (userInitiated)
+      HELPERS::ShowOKDialogText(CVariant{653}, CVariant{14057});
+    return false;
+  }
+
+  CMusicLibraryQueue::GetInstance().ScanLibrary(
+      "", MUSIC_INFO::CMusicInfoScanner::SCAN_NORMAL, userInitiated);
+  return true;
+}
+
+void CMediaSettings::ScheduleLibraryUpdate(LibraryType library)
+{
+  const auto settings = CServiceBroker::GetSettingsComponent()->GetSettings();
+  const bool video = library == LibraryType::VIDEO;
+  CTimer& timer = video ? m_videoLibraryUpdateTimer : m_musicLibraryUpdateTimer;
+  const char* enabledSetting = video ? CSettings::SETTING_VIDEOLIBRARY_SCHEDULEUPDATE
+                                     : CSettings::SETTING_MUSICLIBRARY_SCHEDULEUPDATE;
+
+  timer.Stop(true);
+  if (!settings->GetBool(enabledSetting))
+    return;
+
+  const auto delay = GetScheduledLibraryUpdateDelay(library);
+  CLog::Log(LOGINFO, "Scheduled {} library update in {} seconds", video ? "video" : "music",
+            std::chrono::duration_cast<std::chrono::seconds>(delay).count());
+  timer.Start(delay);
+}
+
+void CMediaSettings::OnScheduledLibraryUpdate(LibraryType library)
+{
+  const auto settings = CServiceBroker::GetSettingsComponent()->GetSettings();
+  const bool video = library == LibraryType::VIDEO;
+  const char* enabledSetting = video ? CSettings::SETTING_VIDEOLIBRARY_SCHEDULEUPDATE
+                                     : CSettings::SETTING_MUSICLIBRARY_SCHEDULEUPDATE;
+  if (!settings->GetBool(enabledSetting))
+    return;
+
+  CTimer& timer = video ? m_videoLibraryUpdateTimer : m_musicLibraryUpdateTimer;
+  timer.RestartAsync(GetScheduledLibraryUpdateDelay(library));
+
+  const char* backgroundSetting = video ? CSettings::SETTING_VIDEOLIBRARY_BACKGROUNDUPDATE
+                                        : CSettings::SETTING_MUSICLIBRARY_BACKGROUNDUPDATE;
+  if (UpdateLibrary(library, !settings->GetBool(backgroundSetting)))
+    CLog::Log(LOGINFO, "Starting scheduled {} library update", video ? "video" : "music");
+  else
+    CLog::Log(LOGINFO, "Skipping scheduled {} library update because the library is busy",
+              video ? "video" : "music");
+}
+
+std::chrono::milliseconds CMediaSettings::GetScheduledLibraryUpdateDelay(
+    LibraryType library) const
+{
+  const auto settings = CServiceBroker::GetSettingsComponent()->GetSettings();
+  const bool video = library == LibraryType::VIDEO;
+  const char* typeSetting = video ? CSettings::SETTING_VIDEOLIBRARY_SCHEDULETYPE
+                                  : CSettings::SETTING_MUSICLIBRARY_SCHEDULETYPE;
+  const char* intervalSetting = video ? CSettings::SETTING_VIDEOLIBRARY_SCHEDULEINTERVAL
+                                      : CSettings::SETTING_MUSICLIBRARY_SCHEDULEINTERVAL;
+  const char* timeSetting = video ? CSettings::SETTING_VIDEOLIBRARY_SCHEDULETIME
+                                  : CSettings::SETTING_MUSICLIBRARY_SCHEDULETIME;
+
+  if (settings->GetInt(typeSetting) == 0)
+    return std::chrono::hours{settings->GetInt(intervalSetting)};
+
+  const CDateTime now = CDateTime::GetCurrentDateTime();
+  const CDateTime updateTime = CDateTime::FromDBTime(settings->GetString(timeSetting));
+  CDateTime nextUpdate;
+  nextUpdate.SetDateTime(now.GetYear(), now.GetMonth(), now.GetDay(), updateTime.GetHour(),
+                         updateTime.GetMinute(), 0);
+  if (nextUpdate <= now)
+    nextUpdate += CDateTimeSpan(1, 0, 0, 0);
+
+  const int secondsUntilUpdate = (nextUpdate - now).GetSecondsTotal();
+  // CDateTime has one-second resolution. Round up so the timer cannot fire just before the
+  // selected wall-clock time and schedule the same daily update twice.
+  return std::chrono::seconds{secondsUntilUpdate + 1};
 }
 
 int CMediaSettings::GetWatchedMode(const std::string &content) const

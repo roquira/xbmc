@@ -15,7 +15,9 @@
 #include "settings/lib/ISettingCallback.h"
 #include "settings/lib/ISettingsHandler.h"
 #include "threads/CriticalSection.h"
+#include "threads/Timer.h"
 
+#include <chrono>
 #include <map>
 #include <string>
 
@@ -38,6 +40,8 @@ public:
 
   bool Load(const TiXmlNode *settings) override;
   bool Save(TiXmlNode *settings) const override;
+  void OnSettingsLoaded() override;
+  void OnSettingsUnloaded() override;
 
   void OnSettingAction(const std::shared_ptr<const CSetting>& setting) override;
   void OnSettingChanged(const std::shared_ptr<const CSetting>& setting) override;
@@ -87,7 +91,7 @@ public:
   void SetVideoNeedsUpdate(int version) { m_videoNeedsUpdate = version; }
 
 protected:
-  CMediaSettings() = default;
+  CMediaSettings();
   CMediaSettings(const CMediaSettings&) = delete;
   CMediaSettings& operator=(CMediaSettings const&) = delete;
   ~CMediaSettings() override = default;
@@ -95,6 +99,17 @@ protected:
   static std::string GetWatchedContent(const std::string &content);
 
 private:
+  enum class LibraryType
+  {
+    VIDEO,
+    MUSIC
+  };
+
+  bool UpdateLibrary(LibraryType library, bool userInitiated);
+  void ScheduleLibraryUpdate(LibraryType library);
+  void OnScheduledLibraryUpdate(LibraryType library);
+  std::chrono::milliseconds GetScheduledLibraryUpdateDelay(LibraryType library) const;
+
   CVideoSettings m_defaultVideoSettings;
 
   CGameSettings m_defaultGameSettings;
@@ -119,6 +134,9 @@ private:
       0}; ///< if a database update means an update is required (set to the version number of the db)
   int m_videoNeedsUpdate{
       0}; ///< if a database update means an update is required (set to the version number of the db)
+
+  CTimer m_videoLibraryUpdateTimer;
+  CTimer m_musicLibraryUpdateTimer;
 
   mutable CCriticalSection m_critical;
 };

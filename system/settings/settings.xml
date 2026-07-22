@@ -1009,6 +1009,16 @@
           <level>1</level>
           <control type="button" format="action" />
         </setting>
+        <setting id="medialibrary.showupdateinpowermenu" type="boolean" label="40838" help="40839">
+          <level>1</level>
+          <default>false</default>
+          <control type="toggle" />
+        </setting>
+        <setting id="medialibrary.showcleaninpowermenu" type="boolean" label="40845" help="40846">
+          <level>1</level>
+          <default>false</default>
+          <control type="toggle" />
+        </setting>
       </group>
       <group id="2" label="14236">
         <setting id="videolibrary.updateonstartup" type="boolean" label="14245" help="36146">
@@ -1020,6 +1030,60 @@
           <level>1</level>
           <default>false</default>
           <control type="toggle" />
+        </setting>
+        <setting id="videolibrary.scheduleupdate" type="boolean" label="40830" help="40831">
+          <level>1</level>
+          <default>false</default>
+          <control type="toggle" />
+        </setting>
+        <setting id="videolibrary.scheduletype" parent="videolibrary.scheduleupdate" type="integer" label="40832" help="40833">
+          <level>1</level>
+          <default>0</default>
+          <constraints>
+            <options>
+              <option label="40834">0</option>
+              <option label="40835">1</option>
+            </options>
+          </constraints>
+          <dependencies>
+            <dependency type="enable" setting="videolibrary.scheduleupdate" operator="is">true</dependency>
+          </dependencies>
+          <control type="list" format="string" />
+        </setting>
+        <setting id="videolibrary.scheduleinterval" parent="videolibrary.scheduletype" type="integer" label="40836" help="40843">
+          <level>1</level>
+          <default>24</default>
+          <constraints>
+            <minimum>1</minimum>
+            <step>1</step>
+            <maximum>168</maximum>
+          </constraints>
+          <dependencies>
+            <dependency type="enable">
+              <and>
+                <condition setting="videolibrary.scheduleupdate" operator="is">true</condition>
+                <condition setting="videolibrary.scheduletype" operator="is">0</condition>
+              </and>
+            </dependency>
+          </dependencies>
+          <control type="spinner" format="string">
+            <formatlabel>17998</formatlabel>
+          </control>
+        </setting>
+        <setting id="videolibrary.scheduletime" parent="videolibrary.scheduletype" type="time" label="40837" help="40844">
+          <level>1</level>
+          <default>04:00:00</default>
+          <dependencies>
+            <dependency type="enable">
+              <and>
+                <condition setting="videolibrary.scheduleupdate" operator="is">true</condition>
+                <condition setting="videolibrary.scheduletype" operator="is">1</condition>
+              </and>
+            </dependency>
+          </dependencies>
+          <control type="button" format="time">
+            <heading>14065</heading>
+          </control>
         </setting>
         <setting id="videolibrary.similarvideoaction" type="integer" label="40222" help="40203">
           <level>1</level>
@@ -1037,6 +1101,10 @@
           <level>1</level>
           <default>true</default>
           <control type="toggle" />
+        </setting>
+        <setting id="videolibrary.update" type="action" label="653" help="40842">
+          <level>1</level>
+          <control type="button" format="action" />
         </setting>
         <setting id="videolibrary.cleanup" type="action" label="14247" help="36148">
           <level>2</level>
@@ -1061,6 +1129,64 @@
           <level>1</level>
           <default>false</default>
           <control type="toggle" />
+        </setting>
+        <setting id="musiclibrary.scheduleupdate" type="boolean" label="40830" help="40831">
+          <level>1</level>
+          <default>false</default>
+          <control type="toggle" />
+        </setting>
+        <setting id="musiclibrary.scheduletype" parent="musiclibrary.scheduleupdate" type="integer" label="40832" help="40833">
+          <level>1</level>
+          <default>0</default>
+          <constraints>
+            <options>
+              <option label="40834">0</option>
+              <option label="40835">1</option>
+            </options>
+          </constraints>
+          <dependencies>
+            <dependency type="enable" setting="musiclibrary.scheduleupdate" operator="is">true</dependency>
+          </dependencies>
+          <control type="list" format="string" />
+        </setting>
+        <setting id="musiclibrary.scheduleinterval" parent="musiclibrary.scheduletype" type="integer" label="40836" help="40843">
+          <level>1</level>
+          <default>24</default>
+          <constraints>
+            <minimum>1</minimum>
+            <step>1</step>
+            <maximum>168</maximum>
+          </constraints>
+          <dependencies>
+            <dependency type="enable">
+              <and>
+                <condition setting="musiclibrary.scheduleupdate" operator="is">true</condition>
+                <condition setting="musiclibrary.scheduletype" operator="is">0</condition>
+              </and>
+            </dependency>
+          </dependencies>
+          <control type="spinner" format="string">
+            <formatlabel>17998</formatlabel>
+          </control>
+        </setting>
+        <setting id="musiclibrary.scheduletime" parent="musiclibrary.scheduletype" type="time" label="40837" help="40844">
+          <level>1</level>
+          <default>04:00:00</default>
+          <dependencies>
+            <dependency type="enable">
+              <and>
+                <condition setting="musiclibrary.scheduleupdate" operator="is">true</condition>
+                <condition setting="musiclibrary.scheduletype" operator="is">1</condition>
+              </and>
+            </dependency>
+          </dependencies>
+          <control type="button" format="time">
+            <heading>14065</heading>
+          </control>
+        </setting>
+        <setting id="musiclibrary.update" type="action" label="653" help="40842">
+          <level>1</level>
+          <control type="button" format="action" />
         </setting>
         <setting id="musiclibrary.cleanup" type="action" label="14247" help="36148">
           <level>2</level>

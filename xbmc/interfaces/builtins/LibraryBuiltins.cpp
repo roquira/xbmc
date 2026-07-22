@@ -33,15 +33,36 @@
 
 using namespace KODI::MESSAGING;
 
+using KODI::MESSAGING::HELPERS::DialogResponse;
+
 /*! \brief Clean a library.
  *  \param params The parameters.
- *  \details params[0] = "video" or "music".
+ *  \details params[0] = "video", "music", or "all".
  */
 static int CleanLibrary(const std::vector<std::string>& params)
 {
   bool userInitiated = true;
   if (params.size() > 1)
     userInitiated = StringUtils::EqualsNoCase(params[1], "true");
+  if (!params.empty() && StringUtils::EqualsNoCase(params[0], "all"))
+  {
+    if (userInitiated &&
+        HELPERS::ShowYesNoDialogText(CVariant{313}, CVariant{333}) != DialogResponse::CHOICE_YES)
+      return 0;
+
+    if (CVideoLibraryQueue::GetInstance().IsRunning() ||
+        CMusicLibraryQueue::GetInstance().IsRunning())
+    {
+      if (userInitiated)
+        HELPERS::ShowOKDialogText(CVariant{700}, CVariant{703});
+      return 0;
+    }
+
+    CVideoLibraryQueue::GetInstance().CleanLibraryModal();
+    CMusicLibraryQueue::GetInstance().CleanLibrary(userInitiated);
+    return 0;
+  }
+
   if (params.empty() || StringUtils::EqualsNoCase(params[0], "video") ||
       StringUtils::EqualsNoCase(params[0], "movies") ||
       StringUtils::EqualsNoCase(params[0], "tvshows") ||
@@ -308,7 +329,7 @@ static int ExportLibrary2(const std::vector<std::string>& params)
 
 /*! \brief Update a library.
  *  \param params The parameters.
- *  \details params[0] = "video" or "music".
+ *  \details params[0] = "video", "music", or "all".
  *           params[1] = "true" to suppress dialogs (optional).
  */
 static int UpdateLibrary(const std::vector<std::string>& params)
@@ -316,7 +337,16 @@ static int UpdateLibrary(const std::vector<std::string>& params)
   bool userInitiated = true;
   if (params.size() > 2)
     userInitiated = StringUtils::EqualsNoCase(params[2], "true");
-  if (StringUtils::EqualsNoCase(params[0], "music"))
+  const bool updateAll = StringUtils::EqualsNoCase(params[0], "all");
+  if (updateAll)
+  {
+    if (!CVideoLibraryQueue::GetInstance().IsRunning())
+      CVideoLibraryQueue::GetInstance().ScanLibrary("", false, userInitiated);
+    if (!CMusicLibraryQueue::GetInstance().IsRunning())
+      CMusicLibraryQueue::GetInstance().ScanLibrary(
+          "", MUSIC_INFO::CMusicInfoScanner::SCAN_NORMAL, userInitiated);
+  }
+  else if (StringUtils::EqualsNoCase(params[0], "music"))
   {
     if (CMusicLibraryQueue::GetInstance().IsScanningLibrary())
       CMusicLibraryQueue::GetInstance().StopLibraryScanning();
@@ -467,7 +497,7 @@ CBuiltins::CommandMap CLibraryBuiltins::GetOperations() const
   return {{"cleanlibrary", {"Clean the video/music library", 1, CleanLibrary}},
           {"exportlibrary", {"Export the video/music library", 1, ExportLibrary}},
           {"exportlibrary2", {"Export the video/music library", 1, ExportLibrary2}},
-          {"updatelibrary", {"Update the selected library (music or video)", 1, UpdateLibrary}},
+          {"updatelibrary", {"Update the selected library (music, video, or all)", 1, UpdateLibrary}},
           {"videolibrary.search",
            {"Brings up a search dialog which will search the library", 0, SearchVideoLibrary}},
           {"musiclibrary.refreshartist",

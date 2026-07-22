@@ -85,6 +85,13 @@ public:
       "videolibrary.groupsingleitemsets";
   static constexpr auto SETTING_VIDEOLIBRARY_UPDATEONSTARTUP = "videolibrary.updateonstartup";
   static constexpr auto SETTING_VIDEOLIBRARY_BACKGROUNDUPDATE = "videolibrary.backgroundupdate";
+  static constexpr auto SETTING_VIDEOLIBRARY_UPDATE = "videolibrary.update";
+  static constexpr auto SETTING_VIDEOLIBRARY_SCHEDULEUPDATE =
+      "videolibrary.scheduleupdate";
+  static constexpr auto SETTING_VIDEOLIBRARY_SCHEDULETYPE = "videolibrary.scheduletype";
+  static constexpr auto SETTING_VIDEOLIBRARY_SCHEDULEINTERVAL =
+      "videolibrary.scheduleinterval";
+  static constexpr auto SETTING_VIDEOLIBRARY_SCHEDULETIME = "videolibrary.scheduletime";
   static constexpr auto SETTING_VIDEOLIBRARY_CLEANUP = "videolibrary.cleanup";
   static constexpr auto SETTING_VIDEOLIBRARY_EXPORT = "videolibrary.export";
   static constexpr auto SETTING_VIDEOLIBRARY_IMPORT = "videolibrary.import";
@@ -283,6 +290,12 @@ public:
   static constexpr auto SETTING_MUSICLIBRARY_SHOWALLITEMS = "musiclibrary.showallitems";
   static constexpr auto SETTING_MUSICLIBRARY_UPDATEONSTARTUP = "musiclibrary.updateonstartup";
   static constexpr auto SETTING_MUSICLIBRARY_BACKGROUNDUPDATE = "musiclibrary.backgroundupdate";
+  static constexpr auto SETTING_MUSICLIBRARY_UPDATE = "musiclibrary.update";
+  static constexpr auto SETTING_MUSICLIBRARY_SCHEDULEUPDATE = "musiclibrary.scheduleupdate";
+  static constexpr auto SETTING_MUSICLIBRARY_SCHEDULETYPE = "musiclibrary.scheduletype";
+  static constexpr auto SETTING_MUSICLIBRARY_SCHEDULEINTERVAL =
+      "musiclibrary.scheduleinterval";
+  static constexpr auto SETTING_MUSICLIBRARY_SCHEDULETIME = "musiclibrary.scheduletime";
   static constexpr auto SETTING_MUSICLIBRARY_CLEANUP = "musiclibrary.cleanup";
   static constexpr auto SETTING_MUSICLIBRARY_EXPORT = "musiclibrary.export";
   static constexpr auto SETTING_MUSICLIBRARY_EXPORT_FILETYPE = "musiclibrary.exportfiletype";
@@ -294,6 +307,10 @@ public:
   static constexpr auto SETTING_MUSICLIBRARY_EXPORT_SKIPNFO = "musiclibrary.exportskipnfo";
   static constexpr auto SETTING_MUSICLIBRARY_IMPORT = "musiclibrary.import";
   static constexpr auto SETTING_MAINTENANCE_CLEANIMAGECACHE = "maintenance.cleanimagecache";
+  static constexpr auto SETTING_MEDIALIBRARY_SHOWUPDATEINPOWERMENU =
+      "medialibrary.showupdateinpowermenu";
+  static constexpr auto SETTING_MEDIALIBRARY_SHOWCLEANINPOWERMENU =
+      "medialibrary.showcleaninpowermenu";
   static constexpr auto SETTING_MUSICPLAYER_AUTOPLAYNEXTITEM = "musicplayer.autoplaynextitem";
   static constexpr auto SETTING_MUSICPLAYER_QUEUEBYDEFAULT = "musicplayer.queuebydefault";
   static constexpr auto SETTING_MUSICPLAYER_SEEKSTEPS = "musicplayer.seeksteps";

@@ -25406,3 +25406,105 @@ msgstr ""
 msgctxt "#40826"
 msgid "Adds a Releases & discs folder to individual season views when complete TV discs are available. This does not affect discs offered as episode versions."
 msgstr ""
+
+#. Setting that enables automatic video or music library updates
+#: system/settings/settings.xml
+msgctxt "#40830"
+msgid "Schedule library updates"
+msgstr ""
+
+#. Help for setting #40830
+#: system/settings/settings.xml
+msgctxt "#40831"
+msgid "Automatically checks every configured source in this library for new and changed media."
+msgstr ""
+
+#. Setting for choosing an interval or daily library update
+#: system/settings/settings.xml
+msgctxt "#40832"
+msgid "Schedule type"
+msgstr ""
+
+#. Help for setting #40832
+#: system/settings/settings.xml
+msgctxt "#40833"
+msgid "Run updates after a regular interval or once per day at a chosen time."
+msgstr ""
+
+#. Library update schedule type
+#: system/settings/settings.xml
+msgctxt "#40834"
+msgid "Regular interval"
+msgstr ""
+
+#. Library update schedule type
+#: system/settings/settings.xml
+msgctxt "#40835"
+msgid "Once per day"
+msgstr ""
+
+#. Library update interval setting
+#: system/settings/settings.xml
+msgctxt "#40836"
+msgid "Update interval"
+msgstr ""
+
+#. Daily library update time setting
+#: system/settings/settings.xml
+msgctxt "#40837"
+msgid "Update time"
+msgstr ""
+
+#. Setting that adds a library update shortcut to the power menu
+#: system/settings/settings.xml
+msgctxt "#40838"
+msgid "Show 'Update libraries' in power menu"
+msgstr ""
+
+#. Help for setting #40838
+#: system/settings/settings.xml
+msgctxt "#40839"
+msgid "Adds an optional power menu shortcut that checks all video and music sources for library updates."
+msgstr ""
+
+#. Power menu action that updates video and music libraries
+#: addons/skin.estuary/xml/DialogButtonMenu.xml
+msgctxt "#40840"
+msgid "Update libraries"
+msgstr ""
+
+#. Power menu action that cleans video and music libraries
+#: addons/skin.estuary/xml/DialogButtonMenu.xml
+msgctxt "#40841"
+msgid "Clean libraries"
+msgstr ""
+
+#. Help for a video or music library update action
+#: system/settings/settings.xml
+msgctxt "#40842"
+msgid "Check every configured source in this library for new and changed media now."
+msgstr ""
+
+#. Help for setting #40836
+#: system/settings/settings.xml
+msgctxt "#40843"
+msgid "Number of hours between automatic library updates."
+msgstr ""
+
+#. Help for setting #40837
+#: system/settings/settings.xml
+msgctxt "#40844"
+msgid "Time of day to run the automatic library update."
+msgstr ""
+
+#. Setting that adds a library cleaning shortcut to the power menu
+#: system/settings/settings.xml
+msgctxt "#40845"
+msgid "Show 'Clean libraries' in power menu"
+msgstr ""
+
+#. Help for setting #40845
+#: system/settings/settings.xml
+msgctxt "#40846"
+msgid "Adds an optional power menu shortcut that removes missing items from the video and music libraries after confirmation."
+msgstr ""
