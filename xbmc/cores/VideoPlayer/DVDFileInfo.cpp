@@ -261,11 +261,13 @@ bool CDVDFileInfo::CanExtract(const CFileItem& fileItem)
   if (fileItem.IsFolder())
     return false;
 
+  const std::string& path{fileItem.GetDynPath()};
+  const bool isLanHttp{URIUtils::IsHTTP(path) && URIUtils::IsOnLAN(path)};
   if ((URIUtils::IsPVR(fileItem.GetPath()) &&
        !PVR::UTILS::ProvidesStreamForMetaDataExtraction(fileItem)) ||
       // plugin path not fully resolved
       URIUtils::IsPlugin(fileItem.GetDynPath()) || URIUtils::IsUPnP(fileItem.GetPath()) ||
-      NETWORK::IsInternetStream(fileItem) || VIDEO::IsDiscStub(fileItem) ||
+      (NETWORK::IsInternetStream(fileItem) && !isLanHttp) || VIDEO::IsDiscStub(fileItem) ||
       PLAYLIST::IsPlayList(fileItem))
     return false;
 

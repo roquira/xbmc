@@ -181,6 +181,37 @@ TEST_F(EpisodeAssetsTest, ResolvedDefaultDoesNotRequireLogicalFileToBeVersion)
   EXPECT_NE(assets.end(), std::ranges::find(assets, resolvedFile, &EpisodeAssetInfo::m_fileId));
 }
 
+TEST_F(EpisodeAssetsTest, RangeAssetCountsMatchEpisodeBrowserVisibility)
+{
+  CFileItem firstDisc(
+      "C:\\shows\\Show S01E01-E07 [edition=Blu-ray] [disc=01]\\BDMV\\index.bdmv", false);
+  ASSERT_TRUE(m_database.AddEpisodeRangeAsset(1, 10, 1, 1, 1, 7, 1, "Blu-ray", firstDisc,
+                                              false));
+
+  std::vector<EpisodeAssetInfo> assets;
+  m_database.GetEpisodeAssets(100, assets, false);
+  EXPECT_TRUE(assets.empty());
+  m_database.GetEpisodeAssets(100, assets, true);
+  ASSERT_EQ(1U, assets.size());
+  EXPECT_FALSE(assets.front().IsExact());
+
+  CFileItem secondDisc(
+      "C:\\shows\\Show S01E01-E04 [edition=Alternate Blu-ray] [disc=01]\\BDMV\\index.bdmv",
+      false);
+  ASSERT_TRUE(m_database.AddEpisodeRangeAsset(1, 10, 1, 1, 1, 4, 1, "Alternate Blu-ray",
+                                              secondDisc, false));
+  m_database.GetEpisodeAssets(100, assets, true);
+  EXPECT_EQ(2U, assets.size());
+
+  CFileItem exact("C:\\shows\\Show S01E01 [edition=WEB-DL].mkv", false);
+  ASSERT_TRUE(m_database.AddEpisodeVersion(100, "WEB-DL", exact));
+  m_database.GetEpisodeAssets(100, assets, false);
+  ASSERT_EQ(1U, assets.size());
+  EXPECT_TRUE(assets.front().IsExact());
+  m_database.GetEpisodeAssets(100, assets, true);
+  EXPECT_EQ(3U, assets.size());
+}
+
 TEST_F(EpisodeAssetsTest, RangeWithoutLocatorIsStoredButNeverResolvedAsEpisode)
 {
   EXPECT_FALSE(m_database.HasSeasonRangeAssets(10));

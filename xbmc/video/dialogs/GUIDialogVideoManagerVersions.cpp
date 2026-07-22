@@ -565,7 +565,7 @@ bool CGUIDialogVideoManagerVersions::ChooseVideoAndConvertToVideoVersion(
 
   return videoDb.ConvertVideoToVersion(itemType, sourceDbId, targetDbId, versionTypeId,
                                        VideoAssetType::VERSION,
-                                       DeleteMovieCascadeAction::ALL_ASSETS);
+                                       DeleteMovieCascadeAction::ALL_ASSETS_NOT_STREAMDETAILS);
 }
 
 bool CGUIDialogVideoManagerVersions::GetAllOtherMovies(const std::shared_ptr<CFileItem>& item,

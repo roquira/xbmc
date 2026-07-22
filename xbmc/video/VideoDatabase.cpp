@@ -4912,7 +4912,29 @@ CVideoInfoTag CVideoDatabase::GetDetailsForEpisode(const dbiplus::sql_record* co
   const int versionCount{GetSingleValueInt(PrepareSQL(
       "SELECT COUNT(1) FROM videoversion WHERE idMedia=%i AND media_type='%s' AND itemType=%i",
       details.m_iDbId, MediaTypeEpisode, VideoAssetType::VERSION), *m_pDS2)};
-  details.SetHasVideoVersions(versionCount > 1);
+  bool hasVideoVersions{versionCount > 1};
+  if (!hasVideoVersions &&
+      CServiceBroker::GetSettingsComponent()->GetSettings()->GetBool(
+          CSettings::SETTING_VIDEOLIBRARY_SHOWUNLOCATEDEPISODEDISCS))
+  {
+    // Complete discs are intentionally not stored as exact episode versions. When they are
+    // exposed in the episode version browser, include discs covering this episode in the same
+    // count used by ListItem.HasVideoVersions so the episode row and browser stay consistent.
+    const int rangeCount{GetSingleValueInt(
+        PrepareSQL(
+            "SELECT COUNT(1) FROM episodeassetcoverage c "
+            "JOIN videoversion vv ON vv.idFile=c.idFile "
+            "JOIN videoversiontype vvt ON vvt.id=vv.idType AND vvt.itemType=vv.itemType "
+            "JOIN files f ON f.idFile=c.idFile JOIN path p ON p.idPath=f.idPath "
+            "WHERE c.idShow=%i "
+            "AND (c.firstSeason < %i OR (c.firstSeason=%i AND c.firstEpisode<=%i)) "
+            "AND (c.lastSeason > %i OR (c.lastSeason=%i AND c.lastEpisode>=%i))",
+            details.m_iIdShow, details.m_iSeason, details.m_iSeason, details.m_iEpisode,
+            details.m_iSeason, details.m_iSeason, details.m_iEpisode),
+        *m_pDS2)};
+    hasVideoVersions = versionCount + rangeCount > 1;
+  }
+  details.SetHasVideoVersions(hasVideoVersions);
   const int preferredFile{GetSingleValueInt(
       PrepareSQL("SELECT idFile FROM episodeassetpreference WHERE idEpisode=%i",
                  details.m_iDbId),
@@ -13043,7 +13065,16 @@ bool CVideoDatabase::ConvertVideoToVersion(VideoDbContentType itemType,
     SetVideoVersionDefaultArt(idFile, dbIdSource, mediaType);
 
     if (itemType == VideoDbContentType::MOVIES)
-      DeleteMovie(dbIdSource, cascadeAction, DeleteMovieHashAction::HASH_PRESERVE);
+    {
+      // Conversion keeps the physical file as an asset of the target movie, so its stream
+      // details remain valid. ALL_ASSETS is appropriate for a real deletion, but must not erase
+      // the codec and duration rows of a file that survives this conversion.
+      const DeleteMovieCascadeAction conversionCascade{
+          cascadeAction == DeleteMovieCascadeAction::ALL_ASSETS
+              ? DeleteMovieCascadeAction::ALL_ASSETS_NOT_STREAMDETAILS
+              : cascadeAction};
+      DeleteMovie(dbIdSource, conversionCascade, DeleteMovieHashAction::HASH_PRESERVE);
+    }
   }
 
   // Rename the default version when provided
