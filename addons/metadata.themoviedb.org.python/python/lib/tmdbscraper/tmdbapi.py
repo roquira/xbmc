@@ -65,6 +65,7 @@ def search_movie(query, year=None, language=None, page=None):
     theurl = SEARCH_URL
     params = _set_params(None, language)
     params['query'] = query
+    params['include_adult'] = 'true'
     if page is not None:
         params['page'] = page
     if year is not None:
