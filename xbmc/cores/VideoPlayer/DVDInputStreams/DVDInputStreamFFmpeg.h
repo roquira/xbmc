@@ -10,6 +10,8 @@
 
 #include "DVDInputStream.h"
 
+#include <atomic>
+
 class CDVDInputStreamFFmpeg
   : public CDVDInputStream
 {
@@ -24,8 +26,8 @@ public:
   int64_t GetLength() override;
   std::string GetFileName() override;
 
-  void  Abort() override { m_aborted = true;  }
-  bool Aborted() { return m_aborted;  }
+  void Abort() override { m_aborted.store(true); }
+  bool Aborted() { return m_aborted.load(); }
 
   const CFileItem& GetItem() const { return m_item; }
 
@@ -36,5 +38,5 @@ public:
   std::string GetProxyPassword() const;
 
 protected:
-  bool m_aborted = false;
+  std::atomic_bool m_aborted{false};
 };

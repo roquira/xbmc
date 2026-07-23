@@ -27,10 +27,7 @@ CDVDInputStreamFFmpeg::~CDVDInputStreamFFmpeg()
 
 bool CDVDInputStreamFFmpeg::IsEOF()
 {
-  if(m_aborted)
-    return true;
-  else
-    return false;
+  return m_aborted.load();
 }
 
 bool CDVDInputStreamFFmpeg::Open()
@@ -38,7 +35,7 @@ bool CDVDInputStreamFFmpeg::Open()
   if (!CDVDInputStream::Open())
     return false;
 
-  m_aborted = false;
+  m_aborted.store(false);
 
   if (StringUtils::CompareNoCase(m_item.GetDynPath(), "udp://", 6) == 0 ||
       StringUtils::CompareNoCase(m_item.GetDynPath(), "rtp://", 6) == 0)

@@ -22,6 +22,7 @@
 #include "cores/VideoPlayer/Interface/TimingConstants.h"
 #include "cores/VideoPlayer/VideoRenderers/RenderManager.h"
 #include "guilib/DispResource.h"
+#include "threads/CriticalSection.h"
 #include "threads/SystemClock.h"
 #include "threads/Thread.h"
 
@@ -411,6 +412,8 @@ protected:
   void DestroyPlayers();
 
   void Prepare();
+  void RegisterInterruptiblePVRHLSInputStream();
+  void ClearInterruptiblePVRHLSInputStream();
   bool OpenStream(CCurrentStream& current, int64_t demuxerId, int iStream, int source, bool reset = true);
   bool OpenAudioStream(CDVDStreamInfo& hint, bool reset = true);
   bool OpenVideoStream(CDVDStreamInfo& hint, bool reset = true);
@@ -587,6 +590,9 @@ protected:
   CDVDClock m_clock;
   CDVDOverlayContainer m_overlayContainer;
 
+  CCriticalSection m_pvrHlsInputSection;
+  CDVDInputStream* m_interruptiblePVRHLSInputStream{nullptr};
+  std::atomic_bool m_pvrHlsSwitchPending{false};
   std::shared_ptr<CDVDInputStream> m_pInputStream;
   std::unique_ptr<CDVDDemux> m_pDemuxer;
   std::shared_ptr<CDVDDemux> m_pSubtitleDemuxer;

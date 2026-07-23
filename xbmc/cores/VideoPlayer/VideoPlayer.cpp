@@ -822,6 +822,20 @@ bool CVideoPlayer::OpenFile(const CFileItem& file, const CPlayerOptions &options
     params.m_item.SetMimeTypeForInternetFile();
     m_messenger.Put(std::make_shared<CDVDMsgOpenFile>(params), 1);
 
+    bool interruptedPVRHLSRead{false};
+    if (file.IsPVRChannel())
+    {
+      std::unique_lock lock(m_pvrHlsInputSection);
+      if (m_interruptiblePVRHLSInputStream)
+      {
+        m_pvrHlsSwitchPending.store(true);
+        m_interruptiblePVRHLSInputStream->Abort();
+        interruptedPVRHLSRead = true;
+      }
+    }
+    if (interruptedPVRHLSRead)
+      CLog::Log(LOGDEBUG, "VideoPlayer: interrupting live PVR HLS read for channel switch");
+
     return true;
   }
 
@@ -907,6 +921,7 @@ void CVideoPlayer::OnStartup()
 
 bool CVideoPlayer::OpenInputStream()
 {
+  ClearInterruptiblePVRHLSInputStream();
   if (m_pInputStream.use_count() > 1)
     throw std::runtime_error("m_pInputStream reference count is greater than 1");
   m_pInputStream.reset();
@@ -1683,6 +1698,38 @@ void CVideoPlayer::Prepare()
   UpdatePlayState(0);
 
   SetCaching(CACHESTATE_FLUSH);
+
+  RegisterInterruptiblePVRHLSInputStream();
+}
+
+void CVideoPlayer::RegisterInterruptiblePVRHLSInputStream()
+{
+  std::unique_lock lock(m_pvrHlsInputSection);
+  m_interruptiblePVRHLSInputStream = nullptr;
+  m_pvrHlsSwitchPending.store(false);
+
+  if (!m_item.IsPVRChannel() || !m_pInputStream || !m_pInputStream->IsRealtime() ||
+      !m_pInputStream->IsStreamType(DVDSTREAM_TYPE_FFMPEG))
+    return;
+
+  const CURL url{m_pInputStream->GetURL()};
+  if (!url.IsProtocol("http") && !url.IsProtocol("https"))
+    return;
+
+  const std::string& mimeType{m_pInputStream->GetContent()};
+  if (!url.HasExtension(".m3u8") &&
+      !StringUtils::EqualsNoCase(mimeType, "application/x-mpegurl") &&
+      !StringUtils::EqualsNoCase(mimeType, "application/vnd.apple.mpegurl"))
+    return;
+
+  m_interruptiblePVRHLSInputStream = m_pInputStream.get();
+}
+
+void CVideoPlayer::ClearInterruptiblePVRHLSInputStream()
+{
+  std::unique_lock lock(m_pvrHlsInputSection);
+  m_interruptiblePVRHLSInputStream = nullptr;
+  m_pvrHlsSwitchPending.store(false);
 }
 
 void CVideoPlayer::Process()
@@ -1805,6 +1852,13 @@ void CVideoPlayer::Process()
     DemuxPacket* pPacket = NULL;
     CDemuxStream *pStream = NULL;
     ReadPacket(pPacket, pStream);
+    if (m_pvrHlsSwitchPending.exchange(false))
+    {
+      if (pPacket)
+        CDVDDemuxUtils::FreeDemuxPacket(pPacket);
+      continue;
+    }
+
     if (pPacket && !pStream)
     {
       /* probably a empty packet, just free it and move on */
@@ -2945,6 +2999,7 @@ void CVideoPlayer::SendPlayerMessage(std::shared_ptr<CDVDMsg> pMsg, unsigned int
 void CVideoPlayer::OnExit()
 {
   CLog::Log(LOGINFO, "CVideoPlayer::OnExit()");
+  ClearInterruptiblePVRHLSInputStream();
 
   // set event to inform openfile something went wrong in case openfile is still waiting for this event
   SetCaching(CACHESTATE_DONE);
@@ -3089,6 +3144,7 @@ void CVideoPlayer::HandleMessages()
       m_pSubtitleDemuxer.reset();
       m_subtitleDemuxerMap.clear();
       m_pCCDemuxer.reset();
+      ClearInterruptiblePVRHLSInputStream();
       if (m_pInputStream.use_count() > 1)
         throw std::runtime_error("m_pInputStream reference count is greater than 1");
       m_pInputStream.reset();
