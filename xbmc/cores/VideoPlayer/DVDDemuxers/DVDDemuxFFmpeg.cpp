@@ -108,6 +108,22 @@ bool AttachmentIsFont(const AVDictionaryEntry* dict)
   }
   return false;
 }
+
+bool IsLivePVRHLSFFmpegInput(const std::shared_ptr<CDVDInputStream>& input)
+{
+  const auto ffmpegInput = std::dynamic_pointer_cast<CDVDInputStreamFFmpeg>(input);
+  if (!ffmpegInput || !ffmpegInput->GetItem().IsPVRChannel() || !input->IsRealtime())
+    return false;
+
+  const CURL url{input->GetURL()};
+  if (!url.IsProtocol("http") && !url.IsProtocol("https"))
+    return false;
+
+  const std::string& mimeType{input->GetContent()};
+  return url.HasExtension(".m3u8") ||
+         StringUtils::EqualsNoCase(mimeType, "application/x-mpegurl") ||
+         StringUtils::EqualsNoCase(mimeType, "application/vnd.apple.mpegurl");
+}
 } // namespace
 
 std::string CDemuxStreamAudioFFmpeg::GetStreamName()
@@ -342,22 +358,30 @@ bool CDVDDemuxFFmpeg::Open(const std::shared_ptr<CDVDInputStream>& pInput, bool 
     }
     if (result < 0)
     {
-      if (avformat_open_input(&m_pFormatContext, strFile.c_str(), iformat, &options) < 0)
+      const bool openOnce{IsLivePVRHLSFFmpegInput(m_pInput)};
+      if (!openOnce)
       {
-        CLog::Log(LOGDEBUG, "Error, could not open file {}", CURL::GetRedacted(strFile));
-        Dispose();
+        if (avformat_open_input(&m_pFormatContext, strFile.c_str(), iformat, &options) < 0)
+        {
+          CLog::Log(LOGDEBUG, "Error, could not open file {}", CURL::GetRedacted(strFile));
+          Dispose();
+          av_dict_free(&options);
+          return false;
+        }
         av_dict_free(&options);
-        return false;
+        avformat_close_input(&m_pFormatContext);
+        m_pFormatContext = avformat_alloc_context();
+        m_pFormatContext->interrupt_callback = int_cb;
+        options = GetFFMpegOptionsFromInput();
       }
-      av_dict_free(&options);
-      avformat_close_input(&m_pFormatContext);
-      m_pFormatContext = avformat_alloc_context();
-      m_pFormatContext->interrupt_callback = int_cb;
-      AVDictionary* options = GetFFMpegOptionsFromInput();
+
       av_dict_set_int(&options, "load_all_variants", 0, AV_OPT_SEARCH_CHILDREN);
       if (avformat_open_input(&m_pFormatContext, strFile.c_str(), iformat, &options) < 0)
       {
-        CLog::Log(LOGDEBUG, "Error, could not open file (2) {}", CURL::GetRedacted(strFile));
+        if (openOnce)
+          CLog::Log(LOGDEBUG, "Error, could not open file {}", CURL::GetRedacted(strFile));
+        else
+          CLog::Log(LOGDEBUG, "Error, could not open file (2) {}", CURL::GetRedacted(strFile));
         Dispose();
         av_dict_free(&options);
         return false;
