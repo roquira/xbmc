@@ -10077,6 +10077,23 @@ void CVideoDatabase::CleanDatabase(CGUIDialogProgressBarHandle* handle,
           moviesToDelete += StringUtils::Format("{},", i);
         moviesToDelete = "(" + StringUtils::TrimRight(moviesToDelete, ",") + ")";
 
+        std::string assetsToDelete;
+        m_pDS->query(PrepareSQL("SELECT idFile FROM videoversion "
+                                "WHERE media_type='%s' AND idMedia IN %s",
+                                MediaTypeMovie, moviesToDelete.c_str()));
+        while (!m_pDS->eof())
+        {
+          assetsToDelete += m_pDS->fv(0).get_asString() + ",";
+          m_pDS->next();
+        }
+        m_pDS->close();
+        if (!assetsToDelete.empty())
+        {
+          CLog::LogFC(LOGDEBUG, LOGDATABASE, "Cleaning assets of removed movies");
+          m_pDS->exec("DELETE FROM files WHERE idFile IN (" +
+                      StringUtils::TrimRight(assetsToDelete, ",") + ")");
+        }
+
         CLog::LogFC(LOGDEBUG, LOGDATABASE, "Cleaning movie table");
         sql = "DELETE FROM movie WHERE idMovie IN " + moviesToDelete;
         m_pDS->exec(sql);
