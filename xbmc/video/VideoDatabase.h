@@ -39,6 +39,7 @@ class TiXmlNode;
 
 struct VideoAssetInfo;
 struct EpisodeAssetInfo;
+struct CTVShowSubtitlePreference;
 
 enum class VideoAssetTypeOwner;
 enum class VideoAssetType;
@@ -472,6 +473,10 @@ public:
    \sa GetVideoSettings
    */
   void SetVideoSettings(int idFile, const CVideoSettings &settings);
+
+  bool GetTvShowSubtitlePreference(int idShow, CTVShowSubtitlePreference& preference);
+  bool SetTvShowSubtitlePreference(int idShow, const CTVShowSubtitlePreference& preference);
+  bool EraseTvShowSubtitlePreference(int idShow);
 
   /**
    * Erases video settings for file item
@@ -1227,8 +1232,11 @@ protected:
 private:
   void CreateTables() override;
   void CreateAnalytics() override;
+
+protected:
   void UpdateTables(int version) override;
 
+private:
   /*! \brief Helper to get a database id given a query.
    Returns an integer, -1 if not found, and greater than 0 if found.
    \param query the SQL that will retrieve a database id.

@@ -25508,3 +25508,9 @@ msgstr ""
 msgctxt "#40846"
 msgid "Adds an optional power menu shortcut that removes missing items from the video and music libraries after confirmation."
 msgstr ""
+
+#. Action in the subtitle OSD settings for library episodes
+#: xbmc/video/dialogs/GUIDialogSubtitleSettings.cpp
+msgctxt "#40847"
+msgid "Forget subtitle preference for this TV show"
+msgstr ""

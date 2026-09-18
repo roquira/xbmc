@@ -1448,9 +1448,17 @@ void CVideoDatabase::UpdateTables(int iVersion)
         "WHERE videoversion.idFile IS NULL",
         VideoAssetType_VERSION, VIDEO_VERSION_ID_DEFAULT));
   }
+
+  if (iVersion < 149)
+  {
+    m_pDS->exec(
+        "CREATE TABLE tvshowsubtitlepreference (idShow INTEGER PRIMARY KEY, subtitleStream "
+        "INTEGER, subtitlesOn BOOLEAN, hasIdentity BOOLEAN, language TEXT, name TEXT, codec TEXT, "
+        "flags INTEGER, isExternal BOOLEAN)");
+  }
 }
 
 int CVideoDatabase::GetSchemaVersion() const
 {
-  return 148;
+  return 149;
 }

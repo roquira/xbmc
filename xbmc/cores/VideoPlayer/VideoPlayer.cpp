@@ -63,6 +63,7 @@
 #include "utils/Variant.h"
 #include "utils/log.h"
 #include "video/Bookmark.h"
+#include "video/VideoFileItemClassify.h"
 #include "video/VideoInfoTag.h"
 #include "windowing/GraphicContext.h"
 #include "windowing/WinSystem.h"
@@ -88,6 +89,41 @@ using namespace std::chrono_literals;
     if((lh) != (rh)) \
       return (lh) > (rh); \
   } while(0)
+
+bool TVShowSubtitlePreferenceMatches(const CTVShowSubtitlePreference& preference,
+                                     const SelectionStream& stream)
+{
+  if (!preference.m_hasIdentity)
+    return false;
+
+  const bool isExternal = STREAM_SOURCE_MASK(stream.source) == STREAM_SOURCE_DEMUX_SUB ||
+                          STREAM_SOURCE_MASK(stream.source) == STREAM_SOURCE_TEXT;
+
+  std::string preferenceName{preference.m_name};
+  std::string streamName{stream.name};
+  std::string preferenceCodec{preference.m_codec};
+  std::string streamCodec{stream.codec};
+  StringUtils::Trim(preferenceName);
+  StringUtils::Trim(streamName);
+  StringUtils::Trim(preferenceCodec);
+  StringUtils::Trim(streamCodec);
+
+  const bool sameLanguage =
+      (preference.m_language.empty() && stream.language.empty()) ||
+      g_LangCodeExpander.CompareISO639Codes(preference.m_language, stream.language);
+
+  return sameLanguage && StringUtils::EqualsNoCase(preferenceName, streamName) &&
+         StringUtils::EqualsNoCase(preferenceCodec, streamCodec) &&
+         preference.m_flags == stream.flags && preference.m_isExternal == isExternal;
+}
+
+int TVShowSubtitlePreferencePriority(const CTVShowSubtitlePreference& preference,
+                                     const SelectionStream& stream)
+{
+  if (TVShowSubtitlePreferenceMatches(preference, stream))
+    return stream.type_index == preference.m_stream ? 3 : 2;
+  return stream.type_index == preference.m_stream ? 1 : 0;
+}
 
 class PredicateSubtitleFilter
 {
@@ -281,10 +317,17 @@ private:
   bool m_isPrefHearingImp;
   PredicateSubtitleFilter m_filter;
   int m_subStream;
+  std::optional<CTVShowSubtitlePreference> m_tvShowPreference;
 
 public:
-  explicit PredicateSubtitlePriority(const std::string& lang, int stream)
-    : m_playedAudioLang(lang), m_filter(lang, stream), m_subStream(stream)
+  explicit PredicateSubtitlePriority(
+      const std::string& lang,
+      int stream,
+      const std::optional<CTVShowSubtitlePreference>& tvShowPreference = std::nullopt)
+    : m_playedAudioLang(lang),
+      m_filter(lang, stream),
+      m_subStream(stream),
+      m_tvShowPreference(tvShowPreference)
   {
     auto settings = CServiceBroker::GetSettingsComponent()->GetSettings();
     const std::string subLangSetting =
@@ -312,6 +355,12 @@ public:
 
   bool operator()(const SelectionStream& lh, const SelectionStream& rh) const
   {
+    if (m_tvShowPreference)
+    {
+      PREDICATE_RETURN(TVShowSubtitlePreferencePriority(*m_tvShowPreference, lh),
+                       TVShowSubtitlePreferencePriority(*m_tvShowPreference, rh));
+    }
+
     PREDICATE_RETURN(lh.type_index == m_subStream, rh.type_index == m_subStream);
 
     const bool isLexternal = STREAM_SOURCE_MASK(lh.source) == STREAM_SOURCE_DEMUX_SUB ||
@@ -1100,14 +1149,26 @@ void CVideoPlayer::OpenDefaultStreams(bool reset)
     m_processInfo->ResetAudioCodecInfo();
   }
 
+  const CVideoSettings videoSettings{m_processInfo->GetVideoSettings()};
+  const bool isMenuControlledDisc{
+      m_pInputStream->IsStreamType(DVDSTREAM_TYPE_DVD) ||
+      (m_pInputStream->IsStreamType(DVDSTREAM_TYPE_BLURAY) && !noBlurayMenu)};
+  const bool useTvShowSubtitlePreference{
+      videoSettings.m_tvShowSubtitlePreference.has_value() &&
+      IsTvShowSubtitlePreferenceEligible() && !isMenuControlledDisc};
+
   // enable or disable subtitles
-  bool visible = m_processInfo->GetVideoSettings().m_SubtitleOn;
+  bool visible = useTvShowSubtitlePreference
+                     ? videoSettings.m_tvShowSubtitlePreference->m_enabled
+                     : videoSettings.m_SubtitleOn;
   const bool isDefaultVideosettings =
-      m_processInfo->GetVideoSettings().m_isDefaultVideoSettings.value_or(true);
+      videoSettings.m_isDefaultVideoSettings.value_or(true);
 
   // open subtitle stream
   SelectionStream as = m_SelectionStreams.Get(StreamType::AUDIO, GetAudioStream());
-  PredicateSubtitlePriority psp(as.language, m_processInfo->GetVideoSettings().m_SubtitleStream);
+  PredicateSubtitlePriority psp(
+      as.language, videoSettings.m_SubtitleStream,
+      useTvShowSubtitlePreference ? videoSettings.m_tvShowSubtitlePreference : std::nullopt);
   valid = false;
   // We need to close CC subtitles to avoid conflicts with external sub stream
   if (m_CurrentSubtitle.source == STREAM_SOURCE_VIDEOMUX)
@@ -1120,7 +1181,7 @@ void CVideoPlayer::OpenDefaultStreams(bool reset)
       valid = true;
       // default settings: let the predicates control sub visibility
       // video specific settings: respect the user's choice
-      if (isDefaultVideosettings)
+      if (isDefaultVideosettings && !useTvShowSubtitlePreference)
       {
         if (!psp.relevant(stream))
           visible = false;
@@ -3443,6 +3504,7 @@ void CVideoPlayer::HandleMessages()
           m_CurrentSubtitle.id == -1)
       {
         SetSubtitle(GetSubtitle());
+        UpdateTvShowSubtitlePreference(GetSubtitle(), true);
       }
 
       // SetEnableStream only if not visible, when visible OpenStream already implied that stream is enabled
@@ -3619,6 +3681,8 @@ void CVideoPlayer::HandleMessages()
       {
         SetSubtitle(id);
         SetSubtitleVisibleInternal(true);
+        m_processInfo->GetVideoSettingsLocked().SetSubtitleVisible(true);
+        UpdateTvShowSubtitlePreference(id, true);
       }
     }
     else if (pMsg->IsType(CDVDMsg::GENERAL_SYNCHRONIZE))
@@ -4002,6 +4066,12 @@ void CVideoPlayer::SetSubtitleVisible(bool bVisible)
   m_messenger.Put(
       std::make_shared<CDVDMsgBool>(CDVDMsg::PLAYER_SET_SUBTITLESTREAM_VISIBLE, bVisible));
   m_processInfo->GetVideoSettingsLocked().SetSubtitleVisible(bVisible);
+  const CVideoSettings settings{m_processInfo->GetVideoSettings()};
+  const int subtitleStream{
+      settings.m_tvShowSubtitlePreferenceDirty && settings.m_tvShowSubtitlePreference
+          ? settings.m_tvShowSubtitlePreference->m_stream
+          : GetSubtitle()};
+  UpdateTvShowSubtitlePreference(subtitleStream, bVisible);
   CVariant data;
   data["player"]["playerid"] = m_item.GetProperty("playlist_type_hint").asInteger32(-1);
   data["property"]["subtitleenabled"] = bVisible;
@@ -6281,7 +6351,63 @@ void CVideoPlayer::SetSubtitle(int iStream)
 {
   m_messenger.Put(std::make_shared<CDVDMsgPlayerSetSubtitleStream>(iStream));
   m_processInfo->GetVideoSettingsLocked().SetSubtitleStream(iStream);
+  if (IsTvShowSubtitlePreferenceEligible())
+    UpdateTvShowSubtitlePreference(iStream, GetSubtitleVisible());
   NotifySubtitleUpdate(SubtitleChange::FLAG_STREAMINFO_CHANGE);
+}
+
+bool CVideoPlayer::IsTvShowSubtitlePreferenceEligible() const
+{
+  if (!m_item.HasVideoInfoTag())
+    return false;
+
+  const CVideoInfoTag* tag{m_item.GetVideoInfoTag()};
+  if (tag->m_type != MediaTypeEpisode || tag->m_iIdShow <= 0)
+    return false;
+
+  const std::string& dynPath{m_item.GetDynPath()};
+  if (URIUtils::IsBlurayMenuPath(dynPath) || VIDEO::IsDVDFile(m_item))
+    return false;
+
+  // A resolved bluray:// playlist is a direct title and remains eligible. Unresolved disc images
+  // are menu-controlled and must retain the navigator's subtitle behavior.
+  return !m_item.IsDiscImage() || URIUtils::IsBlurayPath(dynPath);
+}
+
+void CVideoPlayer::UpdateTvShowSubtitlePreference(int stream, bool enabled)
+{
+  if (!IsTvShowSubtitlePreferenceEligible())
+    return;
+
+  CTVShowSubtitlePreference preference;
+  const CVideoSettings settings{m_processInfo->GetVideoSettings()};
+  if (settings.m_tvShowSubtitlePreference)
+    preference = *settings.m_tvShowSubtitlePreference;
+
+  preference.m_stream = stream;
+  preference.m_enabled = enabled;
+
+  SubtitleStreamInfo info;
+  GetSubtitleStreamInfo(stream, info);
+  preference.m_hasIdentity = info.valid;
+  if (info.valid)
+  {
+    preference.m_language = info.language;
+    preference.m_name = info.name;
+    preference.m_codec = info.codecName;
+    preference.m_flags = info.flags;
+    preference.m_isExternal = info.isExternal;
+  }
+  else
+  {
+    preference.m_language.clear();
+    preference.m_name.clear();
+    preference.m_codec.clear();
+    preference.m_flags = StreamFlags::FLAG_NONE;
+    preference.m_isExternal = false;
+  }
+
+  m_processInfo->GetVideoSettingsLocked().SetTvShowSubtitlePreference(preference);
 }
 
 int CVideoPlayer::GetSubtitleCount() const

@@ -42,6 +42,7 @@
 
 #include <chrono>
 #include <memory>
+#include <utility>
 
 using namespace KODI;
 using namespace std::chrono_literals;
@@ -56,6 +57,15 @@ void CApplicationPlayerCallback::OnPlayBackEnded()
 
 namespace
 {
+int GetTvShowId(const CFileItem& item)
+{
+  if (!item.HasVideoInfoTag())
+    return -1;
+
+  const CVideoInfoTag* tag = item.GetVideoInfoTag();
+  return tag->m_type == MediaTypeEpisode && tag->m_iIdShow > 0 ? tag->m_iIdShow : -1;
+}
+
 bool ShouldUpdateStreamDetails(const CFileItem& file)
 {
   // If a title/playlist hasn't been selected for a bluray/dvds then the stream details may not be known
@@ -520,6 +530,11 @@ void CApplicationPlayerCallback::RequestVideoSettings(const CFileItem& fileItem)
     if (!dbs.GetVideoSettings(fileItem, vs))
       vs = CMediaSettings::GetInstance().GetDefaultVideoSettings();
 
+    const int idShow{GetTvShowId(fileItem)};
+    CTVShowSubtitlePreference preference;
+    if (idShow > 0 && dbs.GetTvShowSubtitlePreference(idShow, preference))
+      vs.m_tvShowSubtitlePreference = std::move(preference);
+
     auto& components = CServiceBroker::GetAppComponents();
     const auto appPlayer = components.GetComponent<CApplicationPlayer>();
     appPlayer->SetVideoSettings(vs);
@@ -534,6 +549,13 @@ void CApplicationPlayerCallback::StoreVideoSettings(const CFileItem& fileItem,
   CVideoDatabase dbs;
   if (dbs.Open())
   {
+    const int idShow{GetTvShowId(fileItem)};
+    if (idShow > 0 && vs.m_tvShowSubtitlePreferenceDirty &&
+        vs.m_tvShowSubtitlePreference.has_value())
+    {
+      dbs.SetTvShowSubtitlePreference(idShow, *vs.m_tvShowSubtitlePreference);
+    }
+
     if (vs != CMediaSettings::GetInstance().GetDefaultVideoSettings())
     {
       dbs.SetVideoSettings(fileItem, vs);

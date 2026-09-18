@@ -212,6 +212,11 @@ struct SelectionStream
   uint32_t fpsRate{0};
 };
 
+bool TVShowSubtitlePreferenceMatches(const CTVShowSubtitlePreference& preference,
+                                     const SelectionStream& stream);
+int TVShowSubtitlePreferencePriority(const CTVShowSubtitlePreference& preference,
+                                     const SelectionStream& stream);
+
 class CSelectionStreams
 {
 public:
@@ -447,6 +452,8 @@ protected:
   void SetEnableStream(CCurrentStream& current, bool isEnabled);
 
   void SetSubtitleVisibleInternal(bool bVisible);
+  bool IsTvShowSubtitlePreferenceEligible() const;
+  void UpdateTvShowSubtitlePreference(int stream, bool enabled);
 
   enum SubtitleChange
   {

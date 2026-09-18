@@ -8,9 +8,11 @@
 
 #pragma once
 
+#include "VideoPlayer/Interface/StreamInfo.h"
 #include "utils/Map.h"
 
 #include <optional>
+#include <string>
 #include <string_view>
 
 #include <fmt/format.h>
@@ -210,6 +212,18 @@ enum ViewMode
   ViewModeZoom110Width
 };
 
+struct CTVShowSubtitlePreference
+{
+  int m_stream{-1};
+  bool m_enabled{true};
+  bool m_hasIdentity{false};
+  std::string m_language;
+  std::string m_name;
+  std::string m_codec;
+  StreamFlags m_flags{StreamFlags::FLAG_NONE};
+  bool m_isExternal{false};
+};
+
 class CVideoSettings
 {
 public:
@@ -249,6 +263,10 @@ public:
   int m_CenterMixLevel; // relative to metadata or default
   std::optional<bool>
       m_isDefaultVideoSettings; //!< true: default video settings, false: video specific
+  // Transient show-level state. This is deliberately excluded from per-file serialization and
+  // CVideoSettings equality.
+  std::optional<CTVShowSubtitlePreference> m_tvShowSubtitlePreference;
+  bool m_tvShowSubtitlePreferenceDirty{false};
 };
 
 class CCriticalSection;
@@ -263,6 +281,7 @@ public:
 
   void SetSubtitleStream(int stream);
   void SetSubtitleVisible(bool visible);
+  void SetTvShowSubtitlePreference(const CTVShowSubtitlePreference& preference);
   void SetAudioStream(int stream);
   void SetVideoStream(int stream);
   void SetAudioDelay(float delay);

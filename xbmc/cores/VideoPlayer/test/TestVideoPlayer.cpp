@@ -109,6 +109,127 @@ TEST_F(TestVideoPlayer, GetNextBookmark)
   EXPECT_EQ(-1, idx);
 }
 
+TEST_F(TestVideoPlayer, TvShowSubtitlePreferenceUsesIdentityBeforeOrdinal)
+{
+  CTVShowSubtitlePreference preference;
+  preference.m_stream = 0;
+  preference.m_hasIdentity = true;
+  preference.m_language = "jpn";
+  preference.m_name = "Signs & Songs";
+  preference.m_codec = "ass";
+  preference.m_flags = StreamFlags::FLAG_DEFAULT;
+
+  SelectionStream ordinal;
+  ordinal.type = StreamType::SUBTITLE;
+  ordinal.type_index = 0;
+  ordinal.language = "eng";
+  ordinal.name = "Full subtitles";
+  ordinal.codec = "ass";
+
+  SelectionStream identity{ordinal};
+  identity.type_index = 1;
+  identity.language = "ja";
+  identity.name = " signs & songs ";
+  identity.codec = " ASS ";
+  identity.flags = StreamFlags::FLAG_DEFAULT;
+
+  EXPECT_FALSE(TVShowSubtitlePreferenceMatches(preference, ordinal));
+  EXPECT_TRUE(TVShowSubtitlePreferenceMatches(preference, identity));
+  EXPECT_LT(TVShowSubtitlePreferencePriority(preference, ordinal),
+            TVShowSubtitlePreferencePriority(preference, identity));
+}
+
+TEST_F(TestVideoPlayer, TvShowSubtitlePreferenceBreaksIdentityTieWithOrdinal)
+{
+  CTVShowSubtitlePreference preference;
+  preference.m_stream = 1;
+  preference.m_hasIdentity = true;
+  preference.m_language = "eng";
+  preference.m_name = "Full subtitles";
+  preference.m_codec = "ass";
+
+  SelectionStream first;
+  first.type = StreamType::SUBTITLE;
+  first.type_index = 0;
+  first.language = "eng";
+  first.name = "Full subtitles";
+  first.codec = "ass";
+
+  SelectionStream second{first};
+  second.type_index = 1;
+
+  EXPECT_TRUE(TVShowSubtitlePreferenceMatches(preference, first));
+  EXPECT_TRUE(TVShowSubtitlePreferenceMatches(preference, second));
+  EXPECT_LT(TVShowSubtitlePreferencePriority(preference, first),
+            TVShowSubtitlePreferencePriority(preference, second));
+}
+
+TEST_F(TestVideoPlayer, TvShowSubtitlePreferenceFallsBackToOrdinal)
+{
+  CTVShowSubtitlePreference preference;
+  preference.m_stream = 2;
+  preference.m_hasIdentity = true;
+  preference.m_language = "jpn";
+  preference.m_name = "Signs & Songs";
+  preference.m_codec = "ass";
+
+  SelectionStream fallback;
+  fallback.type = StreamType::SUBTITLE;
+  fallback.type_index = 2;
+  fallback.language = "eng";
+  fallback.name = "Full subtitles";
+  fallback.codec = "srt";
+
+  SelectionStream normal{fallback};
+  normal.type_index = 0;
+
+  EXPECT_EQ(1, TVShowSubtitlePreferencePriority(preference, fallback));
+  EXPECT_EQ(0, TVShowSubtitlePreferencePriority(preference, normal));
+
+  preference.m_stream = 9;
+  EXPECT_EQ(0, TVShowSubtitlePreferencePriority(preference, fallback));
+  EXPECT_EQ(0, TVShowSubtitlePreferencePriority(preference, normal));
+}
+
+TEST_F(TestVideoPlayer, TvShowSubtitlePreferenceIdentityIncludesFlagsAndExternalStatus)
+{
+  CTVShowSubtitlePreference preference;
+  preference.m_hasIdentity = true;
+  preference.m_language = "eng";
+  preference.m_name = "Full subtitles";
+  preference.m_codec = "ass";
+  preference.m_flags = StreamFlags::FLAG_HEARING_IMPAIRED;
+  preference.m_isExternal = true;
+
+  SelectionStream stream;
+  stream.type = StreamType::SUBTITLE;
+  stream.language = "eng";
+  stream.name = "Full subtitles";
+  stream.codec = "ass";
+  stream.flags = StreamFlags::FLAG_HEARING_IMPAIRED;
+  stream.source = STREAM_SOURCE_DEMUX_SUB;
+  EXPECT_TRUE(TVShowSubtitlePreferenceMatches(preference, stream));
+
+  stream.flags = StreamFlags::FLAG_NONE;
+  EXPECT_FALSE(TVShowSubtitlePreferenceMatches(preference, stream));
+  stream.flags = StreamFlags::FLAG_HEARING_IMPAIRED;
+  stream.source = STREAM_SOURCE_DEMUX;
+  EXPECT_FALSE(TVShowSubtitlePreferenceMatches(preference, stream));
+}
+
+TEST_F(TestVideoPlayer, TvShowSubtitlePreferenceIsExcludedFromVideoSettingsEquality)
+{
+  CVideoSettings left;
+  CVideoSettings right;
+  CTVShowSubtitlePreference preference;
+  preference.m_stream = 1;
+  right.m_tvShowSubtitlePreference = preference;
+  right.m_tvShowSubtitlePreferenceDirty = true;
+
+  EXPECT_FALSE(left != right);
+  EXPECT_FALSE(right != left);
+}
+
 TEST_F(TestVideoPlayer, GetBookmarkPos)
 {
   CTestPlayerCallback playercallback;

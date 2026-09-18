@@ -41,6 +41,8 @@
 #include "utils/Variant.h"
 #include "utils/log.h"
 #include "video/VideoDatabase.h"
+#include "video/VideoFileItemClassify.h"
+#include "video/VideoInfoTag.h"
 
 #include <string>
 #include <vector>
@@ -50,7 +52,29 @@
 #define SETTING_SUBTITLE_STREAM                "subtitles.stream"
 #define SETTING_SUBTITLE_BROWSER               "subtitles.browser"
 #define SETTING_SUBTITLE_SEARCH                "subtitles.search"
+#define SETTING_FORGET_TVSHOW_PREFERENCE       "subtitles.forgettvshowpreference"
 #define SETTING_MAKE_DEFAULT                   "audio.makedefault"
+
+namespace
+{
+int GetEligibleTvShowId(const CFileItem& item)
+{
+  if (!item.HasVideoInfoTag())
+    return -1;
+
+  const CVideoInfoTag* tag{item.GetVideoInfoTag()};
+  if (tag->m_type != MediaTypeEpisode || tag->m_iIdShow <= 0)
+    return -1;
+
+  const std::string& dynPath{item.GetDynPath()};
+  if (URIUtils::IsBlurayMenuPath(dynPath) || KODI::VIDEO::IsDVDFile(item))
+    return -1;
+  if (item.IsDiscImage() && !URIUtils::IsBlurayPath(dynPath))
+    return -1;
+
+  return tag->m_iIdShow;
+}
+} // namespace
 
 CGUIDialogSubtitleSettings::CGUIDialogSubtitleSettings()
   : CGUIDialogSettingsManualBase(WINDOW_DIALOG_SUBTITLE_OSD_SETTINGS, "DialogSettings.xml")
@@ -106,6 +130,8 @@ void CGUIDialogSubtitleSettings::OnSettingChanged(const std::shared_ptr<const CS
       appPlayer->SetSubtitle(m_subtitleStream);
     }
     appPlayer->SetSubtitleVisible(value);
+    if (m_forgetTvShowPreferenceSetting)
+      m_forgetTvShowPreferenceSetting->SetEnabled(true);
   }
   else if (settingId == SETTING_SUBTITLE_DELAY)
   {
@@ -116,6 +142,8 @@ void CGUIDialogSubtitleSettings::OnSettingChanged(const std::shared_ptr<const CS
   {
     m_subtitleStream = std::static_pointer_cast<const CSettingInt>(setting)->GetValue();
     appPlayer->SetSubtitle(m_subtitleStream);
+    if (m_forgetTvShowPreferenceSetting)
+      m_forgetTvShowPreferenceSetting->SetEnabled(true);
   }
 }
 
@@ -212,6 +240,31 @@ void CGUIDialogSubtitleSettings::OnSettingAction(const std::shared_ptr<const CSe
       m_subtitleStreamSetting->UpdateDynamicOptions();
     }
   }
+  else if (settingId == SETTING_FORGET_TVSHOW_PREFERENCE)
+  {
+    const int idShow{GetEligibleTvShowId(g_application.CurrentFileItem())};
+    if (idShow > 0)
+    {
+      bool erased{false};
+      CVideoDatabase db;
+      if (db.Open())
+      {
+        erased = db.EraseTvShowSubtitlePreference(idShow);
+        db.Close();
+      }
+      if (!erased)
+        return;
+
+      auto& components = CServiceBroker::GetAppComponents();
+      const auto appPlayer = components.GetComponent<CApplicationPlayer>();
+      CVideoSettings settings{appPlayer->GetVideoSettings()};
+      settings.m_tvShowSubtitlePreference.reset();
+      settings.m_tvShowSubtitlePreferenceDirty = false;
+      appPlayer->SetVideoSettings(settings);
+    }
+    if (m_forgetTvShowPreferenceSetting)
+      m_forgetTvShowPreferenceSetting->SetEnabled(false);
+  }
   else if (settingId == SETTING_MAKE_DEFAULT)
     Save();
 }
@@ -240,6 +293,8 @@ bool CGUIDialogSubtitleSettings::Save()
 
   CMediaSettings::GetInstance().GetDefaultVideoSettings() = appPlayer->GetVideoSettings();
   CMediaSettings::GetInstance().GetDefaultVideoSettings().m_SubtitleStream = -1;
+  CMediaSettings::GetInstance().GetDefaultVideoSettings().m_tvShowSubtitlePreference.reset();
+  CMediaSettings::GetInstance().GetDefaultVideoSettings().m_tvShowSubtitlePreferenceDirty = false;
   CServiceBroker::GetSettingsComponent()->GetSettings()->Save();
 
   return true;
@@ -327,6 +382,15 @@ void CGUIDialogSubtitleSettings::InitializeSettings()
     AddButton(groupSubtitles, SETTING_SUBTITLE_BROWSER, 13250, SettingLevel::Basic);
 
   AddButton(groupSubtitles, SETTING_SUBTITLE_SEARCH, 24134, SettingLevel::Basic);
+
+  if (GetEligibleTvShowId(g_application.CurrentFileItem()) > 0)
+  {
+    m_forgetTvShowPreferenceSetting =
+        AddButton(groupSaveAsDefault, SETTING_FORGET_TVSHOW_PREFERENCE, 40847,
+                  SettingLevel::Basic);
+    m_forgetTvShowPreferenceSetting->SetEnabled(
+        videoSettings.m_tvShowSubtitlePreference.has_value());
+  }
 
   // subtitle stream setting
   AddButton(groupSaveAsDefault, SETTING_MAKE_DEFAULT, 12376, SettingLevel::Basic);

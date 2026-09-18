@@ -19,6 +19,7 @@
 #include "VideoInfoScanner.h"
 #include "XBDateTime.h"
 #include "addons/AddonManager.h"
+#include "cores/VideoSettings.h"
 #include "dbwrappers/dataset.h"
 #include "dialogs/GUIDialogExtendedProgressBar.h"
 #include "dialogs/GUIDialogKaiToast.h"
@@ -5213,6 +5214,74 @@ bool CVideoDatabase::GetVideoSettings(int idFile, CVideoSettings &settings)
     CLog::LogF(LOGERROR, "failed");
   }
   return false;
+}
+
+bool CVideoDatabase::GetTvShowSubtitlePreference(int idShow,
+                                                 CTVShowSubtitlePreference& preference)
+{
+  try
+  {
+    if (idShow <= 0 || !m_pDB || !m_pDS)
+      return false;
+
+    m_pDS->query(PrepareSQL("SELECT * FROM tvshowsubtitlepreference WHERE idShow=%i", idShow));
+    if (m_pDS->num_rows() == 0)
+    {
+      m_pDS->close();
+      return false;
+    }
+
+    preference.m_stream = m_pDS->fv("subtitleStream").get_asInt();
+    preference.m_enabled = m_pDS->fv("subtitlesOn").get_asBool();
+    preference.m_hasIdentity = m_pDS->fv("hasIdentity").get_asBool();
+    preference.m_language = m_pDS->fv("language").get_asString();
+    preference.m_name = m_pDS->fv("name").get_asString();
+    preference.m_codec = m_pDS->fv("codec").get_asString();
+    preference.m_flags =
+        static_cast<StreamFlags>(m_pDS->fv("flags").get_asInt());
+    preference.m_isExternal = m_pDS->fv("isExternal").get_asBool();
+    m_pDS->close();
+    return true;
+  }
+  catch (...)
+  {
+    CLog::LogF(LOGERROR, "({}) failed", idShow);
+  }
+  return false;
+}
+
+bool CVideoDatabase::SetTvShowSubtitlePreference(
+    int idShow, const CTVShowSubtitlePreference& preference)
+{
+  try
+  {
+    if (idShow <= 0 || !m_pDB || !m_pDS)
+      return false;
+    if (GetSingleValueInt(PrepareSQL("SELECT 1 FROM tvshow WHERE idShow=%i", idShow)) != 1)
+      return false;
+
+    return ExecuteQuery(PrepareSQL(
+        "REPLACE INTO tvshowsubtitlepreference (idShow, subtitleStream, subtitlesOn, "
+        "hasIdentity, language, name, codec, flags, isExternal) "
+        "VALUES(%i, %i, %i, %i, '%s', '%s', '%s', %i, %i)",
+        idShow, preference.m_stream, preference.m_enabled, preference.m_hasIdentity,
+        preference.m_language.c_str(), preference.m_name.c_str(), preference.m_codec.c_str(),
+        static_cast<int>(preference.m_flags), preference.m_isExternal));
+  }
+  catch (...)
+  {
+    CLog::LogF(LOGERROR, "({}) failed", idShow);
+  }
+  return false;
+}
+
+bool CVideoDatabase::EraseTvShowSubtitlePreference(int idShow)
+{
+  if (idShow <= 0 || !m_pDB || !m_pDS)
+    return false;
+
+  return ExecuteQuery(
+      PrepareSQL("DELETE FROM tvshowsubtitlepreference WHERE idShow=%i", idShow));
 }
 
 void CVideoDatabase::SetVideoSettings(const CFileItem &item, const CVideoSettings &settings)

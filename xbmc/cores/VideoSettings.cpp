@@ -101,6 +101,14 @@ void CVideoSettingsLocked::SetSubtitleVisible(bool visible)
   m_videoSettings.m_SubtitleOn = visible;
 }
 
+void CVideoSettingsLocked::SetTvShowSubtitlePreference(
+    const CTVShowSubtitlePreference& preference)
+{
+  std::unique_lock lock(m_critSection);
+  m_videoSettings.m_tvShowSubtitlePreference = preference;
+  m_videoSettings.m_tvShowSubtitlePreferenceDirty = true;
+}
+
 void CVideoSettingsLocked::SetAudioStream(int stream)
 {
   std::unique_lock lock(m_critSection);

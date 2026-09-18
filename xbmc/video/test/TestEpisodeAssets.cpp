@@ -7,6 +7,7 @@
  */
 
 #include "FileItem.h"
+#include "cores/VideoSettings.h"
 #include "filesystem/File.h"
 #include "filesystem/SpecialProtocol.h"
 #include "settings/AdvancedSettings.h"
@@ -66,6 +67,13 @@ protected:
         "CREATE TABLE seasonreleasepreference (idSeason INTEGER PRIMARY KEY, idType INTEGER)");
     ExecuteQuery(
         "CREATE TABLE tvshowreleasepreference (idShow INTEGER PRIMARY KEY, idType INTEGER)");
+    ExecuteQuery(
+        "CREATE TABLE tvshowsubtitlepreference (idShow INTEGER PRIMARY KEY, subtitleStream "
+        "INTEGER, subtitlesOn BOOLEAN, hasIdentity BOOLEAN, language TEXT, name TEXT, codec TEXT, "
+        "flags INTEGER, isExternal BOOLEAN)");
+    ExecuteQuery(
+        "CREATE TRIGGER delete_tvshow AFTER DELETE ON tvshow FOR EACH ROW BEGIN "
+        "DELETE FROM tvshowsubtitlepreference WHERE idShow=old.idShow; END");
   }
 
   void CreateAnalytics() override {}
@@ -77,6 +85,8 @@ class EpisodeAssetVideoDatabase : public CVideoDatabase
 {
 public:
   bool CommitTransaction() override { return CDatabase::CommitTransaction(); }
+  int SchemaVersion() const { return GetSchemaVersion(); }
+  void UpgradeFrom(int version) { UpdateTables(version); }
 };
 
 class EpisodeAssetsTest : public testing::Test
@@ -302,4 +312,75 @@ TEST_F(EpisodeAssetsTest, RangeWithoutLocatorIsStoredButNeverResolvedAsEpisode)
             std::pair(showRanges[1].m_firstSeason, showRanges[1].m_firstEpisode));
   EXPECT_EQ(std::pair(2, 1),
             std::pair(showRanges[2].m_firstSeason, showRanges[2].m_firstEpisode));
+}
+
+TEST_F(EpisodeAssetsTest, TvShowSubtitlePreferenceRoundTripAndOverwrite)
+{
+  EXPECT_EQ(149, m_database.SchemaVersion());
+
+  CTVShowSubtitlePreference preference;
+  preference.m_stream = 1;
+  preference.m_enabled = true;
+  preference.m_hasIdentity = true;
+  preference.m_language = "jpn";
+  preference.m_name = "Signs & Songs";
+  preference.m_codec = "ass";
+  preference.m_flags = StreamFlags::FLAG_DEFAULT;
+  preference.m_isExternal = false;
+  ASSERT_TRUE(m_database.SetTvShowSubtitlePreference(1, preference));
+
+  CTVShowSubtitlePreference stored;
+  ASSERT_TRUE(m_database.GetTvShowSubtitlePreference(1, stored));
+  EXPECT_EQ(1, stored.m_stream);
+  EXPECT_TRUE(stored.m_enabled);
+  EXPECT_TRUE(stored.m_hasIdentity);
+  EXPECT_EQ("jpn", stored.m_language);
+  EXPECT_EQ("Signs & Songs", stored.m_name);
+  EXPECT_EQ("ass", stored.m_codec);
+  EXPECT_EQ(StreamFlags::FLAG_DEFAULT, stored.m_flags);
+  EXPECT_FALSE(stored.m_isExternal);
+
+  preference.m_stream = 0;
+  preference.m_enabled = false;
+  preference.m_name = "Full subtitles";
+  preference.m_flags = StreamFlags::FLAG_HEARING_IMPAIRED;
+  preference.m_isExternal = true;
+  ASSERT_TRUE(m_database.SetTvShowSubtitlePreference(1, preference));
+  ASSERT_TRUE(m_database.GetTvShowSubtitlePreference(1, stored));
+  EXPECT_EQ(0, stored.m_stream);
+  EXPECT_FALSE(stored.m_enabled);
+  EXPECT_EQ("Full subtitles", stored.m_name);
+  EXPECT_EQ(StreamFlags::FLAG_HEARING_IMPAIRED, stored.m_flags);
+  EXPECT_TRUE(stored.m_isExternal);
+
+  EXPECT_TRUE(m_database.EraseTvShowSubtitlePreference(1));
+  EXPECT_FALSE(m_database.GetTvShowSubtitlePreference(1, stored));
+  EXPECT_FALSE(m_database.SetTvShowSubtitlePreference(999, preference));
+}
+
+TEST_F(EpisodeAssetsTest, DeletingTvShowErasesSubtitlePreference)
+{
+  CTVShowSubtitlePreference preference;
+  preference.m_stream = 0;
+  ASSERT_TRUE(m_database.SetTvShowSubtitlePreference(1, preference));
+
+  ASSERT_TRUE(m_database.ExecuteQuery("DELETE FROM tvshow WHERE idShow=1"));
+
+  CTVShowSubtitlePreference stored;
+  EXPECT_FALSE(m_database.GetTvShowSubtitlePreference(1, stored));
+}
+
+TEST_F(EpisodeAssetsTest, MigratesTvShowSubtitlePreferenceFromVersion148WithAnalyticsAbsent)
+{
+  ASSERT_TRUE(m_database.ExecuteQuery("DROP TRIGGER delete_tvshow"));
+  ASSERT_TRUE(m_database.ExecuteQuery("DROP TABLE tvshowsubtitlepreference"));
+
+  m_database.UpgradeFrom(148);
+
+  CTVShowSubtitlePreference preference;
+  preference.m_stream = 1;
+  ASSERT_TRUE(m_database.SetTvShowSubtitlePreference(1, preference));
+  CTVShowSubtitlePreference stored;
+  ASSERT_TRUE(m_database.GetTvShowSubtitlePreference(1, stored));
+  EXPECT_EQ(1, stored.m_stream);
 }

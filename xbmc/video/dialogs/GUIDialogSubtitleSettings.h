@@ -53,6 +53,7 @@ private:
   int m_subtitleStream;
   bool m_subtitleVisible;
   std::shared_ptr<CSettingInt> m_subtitleStreamSetting;
+  std::shared_ptr<CSettingAction> m_forgetTvShowPreferenceSetting;
 
   std::vector<IPlayerSubtitleCaps> m_subtitleCapabilities;
   static std::string FormatFlags(StreamFlags flags);
