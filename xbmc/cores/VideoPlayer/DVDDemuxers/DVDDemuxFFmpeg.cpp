@@ -2180,6 +2180,25 @@ CDemuxStream* CDVDDemuxFFmpeg::AddStream(int streamIdx)
                       st->colorTransferCharacteristic == AVCOL_TRC_ARIB_STD_B67))
               st->colorSpace = AVCOL_SPC_BT2020_NCL;
           }
+          else if (st->hdr_type == StreamHdrType::HDR_TYPE_NONE) {
+            if (CServiceBroker::GetWinSystem()->IsHDRDisplay() &&
+                CServiceBroker::GetSettingsComponent()->GetSettings()->GetBool(CSettings::SETTING_COREELEC_AMLOGIC_SDR2HDR))
+            {
+              st->colorPrimaries = AVCOL_PRI_BT2020;
+              st->colorSpace = AVCOL_SPC_BT2020_NCL;
+              st->colorTransferCharacteristic = AVCOL_TRC_SMPTE2084;
+              st->colorRange = AVCOL_RANGE_JPEG;
+              st->hdr_type = StreamHdrType::HDR_TYPE_HDR10;
+            }
+          }
+          else if (CServiceBroker::GetSettingsComponent()->GetSettings()->GetBool(CSettings::SETTING_COREELEC_AMLOGIC_HDR2SDR))
+          {
+            st->colorPrimaries = AVCOL_PRI_BT709;
+            st->colorSpace = AVCOL_SPC_BT709;
+            st->colorTransferCharacteristic = AVCOL_TRC_BT709;
+            st->colorRange = AVCOL_RANGE_MPEG;
+            st->hdr_type = StreamHdrType::HDR_TYPE_NONE;
+          }
         }
 
         sideData = av_packet_side_data_get(pStream->codecpar->coded_side_data,
