@@ -224,6 +224,17 @@ struct CTVShowSubtitlePreference
   bool m_isExternal{false};
 };
 
+struct CTVShowAudioPreference
+{
+  int m_stream{-1};
+  bool m_hasIdentity{false};
+  std::string m_language;
+  std::string m_name;
+  std::string m_codec;
+  StreamFlags m_flags{StreamFlags::FLAG_NONE};
+  int m_channels{0};
+};
+
 class CVideoSettings
 {
 public:
@@ -265,6 +276,8 @@ public:
       m_isDefaultVideoSettings; //!< true: default video settings, false: video specific
   // Transient show-level state. This is deliberately excluded from per-file serialization and
   // CVideoSettings equality.
+  std::optional<CTVShowAudioPreference> m_tvShowAudioPreference;
+  bool m_tvShowAudioPreferenceDirty{false};
   std::optional<CTVShowSubtitlePreference> m_tvShowSubtitlePreference;
   bool m_tvShowSubtitlePreferenceDirty{false};
 };
@@ -282,6 +295,7 @@ public:
   void SetSubtitleStream(int stream);
   void SetSubtitleVisible(bool visible);
   void SetTvShowSubtitlePreference(const CTVShowSubtitlePreference& preference);
+  void SetTvShowAudioPreference(const CTVShowAudioPreference& preference);
   void SetAudioStream(int stream);
   void SetVideoStream(int stream);
   void SetAudioDelay(float delay);

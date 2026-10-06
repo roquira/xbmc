@@ -210,6 +210,10 @@ void CVideoDatabaseDDL::CreateTables(CDatabase& db)
       "CREATE TABLE tvshowsubtitlepreference (idShow INTEGER PRIMARY KEY, subtitleStream INTEGER, "
       "subtitlesOn BOOLEAN, hasIdentity BOOLEAN, language TEXT, name TEXT, codec TEXT, flags "
       "INTEGER, isExternal BOOLEAN)");
+  db.ExecuteQuery(
+      "CREATE TABLE tvshowaudiopreference (idShow INTEGER PRIMARY KEY, audioStream INTEGER, "
+      "hasIdentity BOOLEAN, language TEXT, name TEXT, codec TEXT, flags INTEGER, channels "
+      "INTEGER)");
 }
 
 void CVideoDatabaseDDL::CreateLinkIndex(CDatabase& db, const std::string& table)
@@ -351,6 +355,7 @@ void CVideoDatabaseDDL::CreateTriggers(CDatabase& db)
                   "DELETE FROM rating WHERE media_id=old.idShow AND media_type='tvshow'; "
                   "DELETE FROM uniqueid WHERE media_id=old.idShow AND media_type='tvshow'; "
                   "DELETE FROM tvshowreleasepreference WHERE idShow=old.idShow; "
+                  "DELETE FROM tvshowaudiopreference WHERE idShow=old.idShow; "
                   "DELETE FROM tvshowsubtitlepreference WHERE idShow=old.idShow; "
                   "DELETE FROM episodeassetcoverage WHERE idShow=old.idShow; "
                   "END");

@@ -216,6 +216,10 @@ bool TVShowSubtitlePreferenceMatches(const CTVShowSubtitlePreference& preference
                                      const SelectionStream& stream);
 int TVShowSubtitlePreferencePriority(const CTVShowSubtitlePreference& preference,
                                      const SelectionStream& stream);
+bool TVShowAudioPreferenceMatches(const CTVShowAudioPreference& preference,
+                                  const SelectionStream& stream);
+int TVShowAudioPreferencePriority(const CTVShowAudioPreference& preference,
+                                  const SelectionStream& stream);
 
 class CSelectionStreams
 {
@@ -452,7 +456,8 @@ protected:
   void SetEnableStream(CCurrentStream& current, bool isEnabled);
 
   void SetSubtitleVisibleInternal(bool bVisible);
-  bool IsTvShowSubtitlePreferenceEligible() const;
+  bool IsTvShowStreamPreferenceEligible() const;
+  void UpdateTvShowAudioPreference(int stream);
   void UpdateTvShowSubtitlePreference(int stream, bool enabled);
 
   enum SubtitleChange

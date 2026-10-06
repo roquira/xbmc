@@ -230,6 +230,133 @@ TEST_F(TestVideoPlayer, TvShowSubtitlePreferenceIsExcludedFromVideoSettingsEqual
   EXPECT_FALSE(right != left);
 }
 
+TEST_F(TestVideoPlayer, TvShowAudioPreferenceUsesIdentityBeforeOrdinal)
+{
+  CTVShowAudioPreference preference;
+  preference.m_stream = 0;
+  preference.m_hasIdentity = true;
+  preference.m_language = "jpn";
+  preference.m_name = "Japanese 5.1";
+  preference.m_codec = "truehd";
+  preference.m_flags = StreamFlags::FLAG_ORIGINAL;
+  preference.m_channels = 6;
+
+  SelectionStream ordinal;
+  ordinal.type = StreamType::AUDIO;
+  ordinal.type_index = 0;
+  ordinal.language = "eng";
+  ordinal.name = "English 5.1";
+  ordinal.codec = "truehd";
+  ordinal.channels = 6;
+
+  SelectionStream identity{ordinal};
+  identity.type_index = 1;
+  identity.language = "ja";
+  identity.name = " japanese 5.1 ";
+  identity.codec = " TRUEHD ";
+  identity.flags = StreamFlags::FLAG_ORIGINAL;
+
+  EXPECT_FALSE(TVShowAudioPreferenceMatches(preference, ordinal));
+  EXPECT_TRUE(TVShowAudioPreferenceMatches(preference, identity));
+  EXPECT_LT(TVShowAudioPreferencePriority(preference, ordinal),
+            TVShowAudioPreferencePriority(preference, identity));
+}
+
+TEST_F(TestVideoPlayer, TvShowAudioPreferenceBreaksIdentityTieWithOrdinal)
+{
+  CTVShowAudioPreference preference;
+  preference.m_stream = 1;
+  preference.m_hasIdentity = true;
+  preference.m_language = "jpn";
+  preference.m_name = "Japanese";
+  preference.m_codec = "aac";
+  preference.m_channels = 2;
+
+  SelectionStream first;
+  first.type = StreamType::AUDIO;
+  first.type_index = 0;
+  first.language = "jpn";
+  first.name = "Japanese";
+  first.codec = "aac";
+  first.channels = 2;
+
+  SelectionStream second{first};
+  second.type_index = 1;
+
+  EXPECT_TRUE(TVShowAudioPreferenceMatches(preference, first));
+  EXPECT_TRUE(TVShowAudioPreferenceMatches(preference, second));
+  EXPECT_LT(TVShowAudioPreferencePriority(preference, first),
+            TVShowAudioPreferencePriority(preference, second));
+}
+
+TEST_F(TestVideoPlayer, TvShowAudioPreferenceFallsBackToOrdinal)
+{
+  CTVShowAudioPreference preference;
+  preference.m_stream = 1;
+  preference.m_hasIdentity = true;
+  preference.m_language = "jpn";
+  preference.m_name = "Japanese";
+  preference.m_codec = "aac";
+  preference.m_channels = 2;
+
+  SelectionStream fallback;
+  fallback.type = StreamType::AUDIO;
+  fallback.type_index = 1;
+  fallback.language = "eng";
+  fallback.name = "English";
+  fallback.codec = "ac3";
+  fallback.channels = 6;
+
+  SelectionStream normal{fallback};
+  normal.type_index = 0;
+
+  EXPECT_EQ(1, TVShowAudioPreferencePriority(preference, fallback));
+  EXPECT_EQ(0, TVShowAudioPreferencePriority(preference, normal));
+
+  preference.m_stream = 9;
+  EXPECT_EQ(0, TVShowAudioPreferencePriority(preference, fallback));
+  EXPECT_EQ(0, TVShowAudioPreferencePriority(preference, normal));
+}
+
+TEST_F(TestVideoPlayer, TvShowAudioPreferenceIdentityIncludesFlagsAndChannels)
+{
+  CTVShowAudioPreference preference;
+  preference.m_hasIdentity = true;
+  preference.m_language = "jpn";
+  preference.m_name = "Japanese";
+  preference.m_codec = "aac";
+  preference.m_flags = StreamFlags::FLAG_ORIGINAL;
+  preference.m_channels = 6;
+
+  SelectionStream stream;
+  stream.type = StreamType::AUDIO;
+  stream.language = "jpn";
+  stream.name = "Japanese";
+  stream.codec = "aac";
+  stream.flags = StreamFlags::FLAG_ORIGINAL;
+  stream.channels = 6;
+  EXPECT_TRUE(TVShowAudioPreferenceMatches(preference, stream));
+
+  stream.flags = StreamFlags::FLAG_NONE;
+  EXPECT_FALSE(TVShowAudioPreferenceMatches(preference, stream));
+  stream.flags = StreamFlags::FLAG_ORIGINAL;
+  stream.channels = 2;
+  EXPECT_FALSE(TVShowAudioPreferenceMatches(preference, stream));
+}
+
+TEST_F(TestVideoPlayer, TvShowAudioPreferenceIsExcludedFromVideoSettingsEquality)
+{
+  CVideoSettings left;
+  CVideoSettings right;
+  CTVShowAudioPreference preference;
+  preference.m_stream = 1;
+  right.m_tvShowAudioPreference = preference;
+  right.m_tvShowAudioPreferenceDirty = true;
+
+  EXPECT_FALSE(left != right);
+  EXPECT_FALSE(right != left);
+}
+
 TEST_F(TestVideoPlayer, GetBookmarkPos)
 {
   CTestPlayerCallback playercallback;

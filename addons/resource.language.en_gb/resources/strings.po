@@ -25514,3 +25514,9 @@ msgstr ""
 msgctxt "#40847"
 msgid "Forget subtitle preference for this TV show"
 msgstr ""
+
+#. Action in the audio OSD settings for library episodes
+#: xbmc/video/dialogs/GUIDialogAudioSettings.cpp
+msgctxt "#40848"
+msgid "Forget audio preference for this TV show"
+msgstr ""

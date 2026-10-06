@@ -40,6 +40,7 @@ class TiXmlNode;
 struct VideoAssetInfo;
 struct EpisodeAssetInfo;
 struct CTVShowSubtitlePreference;
+struct CTVShowAudioPreference;
 
 enum class VideoAssetTypeOwner;
 enum class VideoAssetType;
@@ -477,6 +478,9 @@ public:
   bool GetTvShowSubtitlePreference(int idShow, CTVShowSubtitlePreference& preference);
   bool SetTvShowSubtitlePreference(int idShow, const CTVShowSubtitlePreference& preference);
   bool EraseTvShowSubtitlePreference(int idShow);
+  bool GetTvShowAudioPreference(int idShow, CTVShowAudioPreference& preference);
+  bool SetTvShowAudioPreference(int idShow, const CTVShowAudioPreference& preference);
+  bool EraseTvShowAudioPreference(int idShow);
 
   /**
    * Erases video settings for file item

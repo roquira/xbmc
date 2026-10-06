@@ -531,6 +531,10 @@ void CApplicationPlayerCallback::RequestVideoSettings(const CFileItem& fileItem)
       vs = CMediaSettings::GetInstance().GetDefaultVideoSettings();
 
     const int idShow{GetTvShowId(fileItem)};
+    CTVShowAudioPreference audioPreference;
+    if (idShow > 0 && dbs.GetTvShowAudioPreference(idShow, audioPreference))
+      vs.m_tvShowAudioPreference = std::move(audioPreference);
+
     CTVShowSubtitlePreference preference;
     if (idShow > 0 && dbs.GetTvShowSubtitlePreference(idShow, preference))
       vs.m_tvShowSubtitlePreference = std::move(preference);
@@ -550,6 +554,12 @@ void CApplicationPlayerCallback::StoreVideoSettings(const CFileItem& fileItem,
   if (dbs.Open())
   {
     const int idShow{GetTvShowId(fileItem)};
+    if (idShow > 0 && vs.m_tvShowAudioPreferenceDirty &&
+        vs.m_tvShowAudioPreference.has_value())
+    {
+      dbs.SetTvShowAudioPreference(idShow, *vs.m_tvShowAudioPreference);
+    }
+
     if (idShow > 0 && vs.m_tvShowSubtitlePreferenceDirty &&
         vs.m_tvShowSubtitlePreference.has_value())
     {

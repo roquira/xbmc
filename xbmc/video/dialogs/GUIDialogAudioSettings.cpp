@@ -8,9 +8,11 @@
 
 #include "GUIDialogAudioSettings.h"
 
+#include "FileItem.h"
 #include "GUIPassword.h"
 #include "ServiceBroker.h"
 #include "addons/Skin.h"
+#include "application/Application.h"
 #include "application/ApplicationComponents.h"
 #include "application/ApplicationPlayer.h"
 #include "application/ApplicationVolumeHandling.h"
@@ -31,9 +33,12 @@
 #include "settings/lib/SettingsManager.h"
 #include "utils/LangCodeExpander.h"
 #include "utils/StringUtils.h"
+#include "utils/URIUtils.h"
 #include "utils/Variant.h"
 #include "utils/log.h"
 #include "video/VideoDatabase.h"
+#include "video/VideoFileItemClassify.h"
+#include "video/VideoInfoTag.h"
 
 #include <memory>
 #include <string>
@@ -46,7 +51,29 @@
 #define SETTING_AUDIO_DELAY                    "audio.delay"
 #define SETTING_AUDIO_STREAM                   "audio.stream"
 #define SETTING_AUDIO_PASSTHROUGH              "audio.digitalanalog"
+#define SETTING_FORGET_TVSHOW_PREFERENCE       "audio.forgettvshowpreference"
 #define SETTING_AUDIO_MAKE_DEFAULT             "audio.makedefault"
+
+namespace
+{
+int GetEligibleTvShowId(const CFileItem& item)
+{
+  if (!item.HasVideoInfoTag())
+    return -1;
+
+  const CVideoInfoTag* tag{item.GetVideoInfoTag()};
+  if (tag->m_type != MediaTypeEpisode || tag->m_iIdShow <= 0)
+    return -1;
+
+  const std::string& dynPath{item.GetDynPath()};
+  if (URIUtils::IsBlurayMenuPath(dynPath) || KODI::VIDEO::IsDVDFile(item))
+    return -1;
+  if (item.IsDiscImage() && !URIUtils::IsBlurayPath(dynPath))
+    return -1;
+
+  return tag->m_iIdShow;
+}
+} // namespace
 
 CGUIDialogAudioSettings::CGUIDialogAudioSettings()
   : CGUIDialogSettingsManualBase(WINDOW_DIALOG_AUDIO_OSD_SETTINGS, "DialogSettings.xml")
@@ -146,6 +173,11 @@ void CGUIDialogAudioSettings::OnSettingChanged(const std::shared_ptr<const CSett
     if (appPlayer->GetAudioStream() != m_audioStream)
     {
       appPlayer->SetAudioStream(m_audioStream); // Set the audio stream to the one selected
+      if (m_forgetTvShowPreferenceSetting &&
+          appPlayer->GetVideoSettings().m_tvShowAudioPreference.has_value())
+      {
+        m_forgetTvShowPreferenceSetting->SetEnabled(true);
+      }
     }
   }
   else if (settingId == SETTING_AUDIO_PASSTHROUGH)
@@ -163,7 +195,32 @@ void CGUIDialogAudioSettings::OnSettingAction(const std::shared_ptr<const CSetti
   CGUIDialogSettingsManualBase::OnSettingAction(setting);
 
   const std::string &settingId = setting->GetId();
-  if (settingId == SETTING_AUDIO_MAKE_DEFAULT)
+  if (settingId == SETTING_FORGET_TVSHOW_PREFERENCE)
+  {
+    const int idShow{GetEligibleTvShowId(g_application.CurrentFileItem())};
+    if (idShow > 0)
+    {
+      bool erased{false};
+      CVideoDatabase db;
+      if (db.Open())
+      {
+        erased = db.EraseTvShowAudioPreference(idShow);
+        db.Close();
+      }
+      if (!erased)
+        return;
+
+      auto& components = CServiceBroker::GetAppComponents();
+      const auto appPlayer = components.GetComponent<CApplicationPlayer>();
+      CVideoSettings settings{appPlayer->GetVideoSettings()};
+      settings.m_tvShowAudioPreference.reset();
+      settings.m_tvShowAudioPreferenceDirty = false;
+      appPlayer->SetVideoSettings(settings);
+    }
+    if (m_forgetTvShowPreferenceSetting)
+      m_forgetTvShowPreferenceSetting->SetEnabled(false);
+  }
+  else if (settingId == SETTING_AUDIO_MAKE_DEFAULT)
     Save();
 }
 
@@ -191,6 +248,8 @@ bool CGUIDialogAudioSettings::Save()
   const auto appPlayer = components.GetComponent<CApplicationPlayer>();
   CMediaSettings::GetInstance().GetDefaultVideoSettings() = appPlayer->GetVideoSettings();
   CMediaSettings::GetInstance().GetDefaultVideoSettings().m_AudioStream = -1;
+  CMediaSettings::GetInstance().GetDefaultVideoSettings().m_tvShowAudioPreference.reset();
+  CMediaSettings::GetInstance().GetDefaultVideoSettings().m_tvShowAudioPreferenceDirty = false;
   CMediaSettings::GetInstance().GetDefaultVideoSettings().m_tvShowSubtitlePreference.reset();
   CMediaSettings::GetInstance().GetDefaultVideoSettings().m_tvShowSubtitlePreferenceDirty = false;
   CServiceBroker::GetSettingsComponent()->GetSettings()->Save();
@@ -311,6 +370,14 @@ void CGUIDialogAudioSettings::InitializeSettings()
   {
     m_passthrough = CServiceBroker::GetSettingsComponent()->GetSettings()->GetBool(CSettings::SETTING_AUDIOOUTPUT_PASSTHROUGH);
     AddToggle(groupAudio, SETTING_AUDIO_PASSTHROUGH, 348, SettingLevel::Basic, m_passthrough);
+  }
+
+  if (GetEligibleTvShowId(g_application.CurrentFileItem()) > 0)
+  {
+    m_forgetTvShowPreferenceSetting =
+        AddButton(groupSaveAsDefault, SETTING_FORGET_TVSHOW_PREFERENCE, 40848,
+                  SettingLevel::Basic);
+    m_forgetTvShowPreferenceSetting->SetEnabled(videoSettings.m_tvShowAudioPreference.has_value());
   }
 
   // subtitle stream setting

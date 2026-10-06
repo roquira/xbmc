@@ -73,6 +73,7 @@ protected:
   float m_volume;
   int m_audioStream;
   bool m_passthrough = false;
+  std::shared_ptr<CSettingAction> m_forgetTvShowPreferenceSetting;
 
   std::vector<IPlayerAudioCaps> m_audioCaps;
 

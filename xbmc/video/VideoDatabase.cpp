@@ -5284,6 +5284,69 @@ bool CVideoDatabase::EraseTvShowSubtitlePreference(int idShow)
       PrepareSQL("DELETE FROM tvshowsubtitlepreference WHERE idShow=%i", idShow));
 }
 
+bool CVideoDatabase::GetTvShowAudioPreference(int idShow, CTVShowAudioPreference& preference)
+{
+  try
+  {
+    if (idShow <= 0 || !m_pDB || !m_pDS)
+      return false;
+
+    m_pDS->query(PrepareSQL("SELECT * FROM tvshowaudiopreference WHERE idShow=%i", idShow));
+    if (m_pDS->num_rows() == 0)
+    {
+      m_pDS->close();
+      return false;
+    }
+
+    preference.m_stream = m_pDS->fv("audioStream").get_asInt();
+    preference.m_hasIdentity = m_pDS->fv("hasIdentity").get_asBool();
+    preference.m_language = m_pDS->fv("language").get_asString();
+    preference.m_name = m_pDS->fv("name").get_asString();
+    preference.m_codec = m_pDS->fv("codec").get_asString();
+    preference.m_flags = static_cast<StreamFlags>(m_pDS->fv("flags").get_asInt());
+    preference.m_channels = m_pDS->fv("channels").get_asInt();
+    m_pDS->close();
+    return true;
+  }
+  catch (...)
+  {
+    CLog::LogF(LOGERROR, "({}) failed", idShow);
+  }
+  return false;
+}
+
+bool CVideoDatabase::SetTvShowAudioPreference(int idShow,
+                                              const CTVShowAudioPreference& preference)
+{
+  try
+  {
+    if (idShow <= 0 || !m_pDB || !m_pDS)
+      return false;
+    if (GetSingleValueInt(PrepareSQL("SELECT 1 FROM tvshow WHERE idShow=%i", idShow)) != 1)
+      return false;
+
+    return ExecuteQuery(PrepareSQL(
+        "REPLACE INTO tvshowaudiopreference (idShow, audioStream, hasIdentity, language, name, "
+        "codec, flags, channels) VALUES(%i, %i, %i, '%s', '%s', '%s', %i, %i)",
+        idShow, preference.m_stream, preference.m_hasIdentity, preference.m_language.c_str(),
+        preference.m_name.c_str(), preference.m_codec.c_str(),
+        static_cast<int>(preference.m_flags), preference.m_channels));
+  }
+  catch (...)
+  {
+    CLog::LogF(LOGERROR, "({}) failed", idShow);
+  }
+  return false;
+}
+
+bool CVideoDatabase::EraseTvShowAudioPreference(int idShow)
+{
+  if (idShow <= 0 || !m_pDB || !m_pDS)
+    return false;
+
+  return ExecuteQuery(PrepareSQL("DELETE FROM tvshowaudiopreference WHERE idShow=%i", idShow));
+}
+
 void CVideoDatabase::SetVideoSettings(const CFileItem &item, const CVideoSettings &settings)
 {
   int idFile = AddFile(item);

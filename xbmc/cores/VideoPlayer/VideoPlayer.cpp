@@ -125,6 +125,38 @@ int TVShowSubtitlePreferencePriority(const CTVShowSubtitlePreference& preference
   return stream.type_index == preference.m_stream ? 1 : 0;
 }
 
+bool TVShowAudioPreferenceMatches(const CTVShowAudioPreference& preference,
+                                  const SelectionStream& stream)
+{
+  if (!preference.m_hasIdentity)
+    return false;
+
+  std::string preferenceName{preference.m_name};
+  std::string streamName{stream.name};
+  std::string preferenceCodec{preference.m_codec};
+  std::string streamCodec{stream.codec};
+  StringUtils::Trim(preferenceName);
+  StringUtils::Trim(streamName);
+  StringUtils::Trim(preferenceCodec);
+  StringUtils::Trim(streamCodec);
+
+  const bool sameLanguage =
+      (preference.m_language.empty() && stream.language.empty()) ||
+      g_LangCodeExpander.CompareISO639Codes(preference.m_language, stream.language);
+
+  return sameLanguage && StringUtils::EqualsNoCase(preferenceName, streamName) &&
+         StringUtils::EqualsNoCase(preferenceCodec, streamCodec) &&
+         preference.m_flags == stream.flags && preference.m_channels == stream.channels;
+}
+
+int TVShowAudioPreferencePriority(const CTVShowAudioPreference& preference,
+                                  const SelectionStream& stream)
+{
+  if (TVShowAudioPreferenceMatches(preference, stream))
+    return stream.type_index == preference.m_stream ? 3 : 2;
+  return stream.type_index == preference.m_stream ? 1 : 0;
+}
+
 class PredicateSubtitleFilter
 {
 private:
@@ -237,14 +269,25 @@ class PredicateAudioFilter
 private:
   int currentAudioStream;
   bool preferStereo;
+  std::optional<CTVShowAudioPreference> m_tvShowPreference;
 public:
-  explicit PredicateAudioFilter(int audioStream, bool preferStereo)
+  explicit PredicateAudioFilter(
+      int audioStream,
+      bool preferStereo,
+      const std::optional<CTVShowAudioPreference>& tvShowPreference = std::nullopt)
     : currentAudioStream(audioStream)
     , preferStereo(preferStereo)
+    , m_tvShowPreference(tvShowPreference)
   {
   };
   bool operator()(const SelectionStream& lh, const SelectionStream& rh)
   {
+    if (m_tvShowPreference)
+    {
+      PREDICATE_RETURN(TVShowAudioPreferencePriority(*m_tvShowPreference, lh),
+                       TVShowAudioPreferencePriority(*m_tvShowPreference, rh));
+    }
+
     PREDICATE_RETURN(lh.type_index == currentAudioStream
                      , rh.type_index == currentAudioStream);
 
@@ -1128,11 +1171,21 @@ void CVideoPlayer::OpenDefaultStreams(bool reset)
     m_processInfo->ResetVideoCodecInfo();
   }
 
+  const CVideoSettings videoSettings{m_processInfo->GetVideoSettings()};
+  const bool isMenuControlledDisc{
+      m_pInputStream->IsStreamType(DVDSTREAM_TYPE_DVD) ||
+      (m_pInputStream->IsStreamType(DVDSTREAM_TYPE_BLURAY) && !noBlurayMenu)};
+  const bool useTvShowAudioPreference{videoSettings.m_tvShowAudioPreference.has_value() &&
+                                      IsTvShowStreamPreferenceEligible() &&
+                                      !isMenuControlledDisc};
+
   // open audio stream
   valid = false;
   if (!m_playerOptions.videoOnly)
   {
-    PredicateAudioFilter af(m_processInfo->GetVideoSettings().m_AudioStream, m_playerOptions.preferStereo);
+    PredicateAudioFilter af(
+        videoSettings.m_AudioStream, m_playerOptions.preferStereo,
+        useTvShowAudioPreference ? videoSettings.m_tvShowAudioPreference : std::nullopt);
     for (const auto& stream : m_SelectionStreams.Get(StreamType::AUDIO, af))
     {
       if(OpenStream(m_CurrentAudio, stream.demuxerId, stream.id, stream.source, reset))
@@ -1149,13 +1202,9 @@ void CVideoPlayer::OpenDefaultStreams(bool reset)
     m_processInfo->ResetAudioCodecInfo();
   }
 
-  const CVideoSettings videoSettings{m_processInfo->GetVideoSettings()};
-  const bool isMenuControlledDisc{
-      m_pInputStream->IsStreamType(DVDSTREAM_TYPE_DVD) ||
-      (m_pInputStream->IsStreamType(DVDSTREAM_TYPE_BLURAY) && !noBlurayMenu)};
   const bool useTvShowSubtitlePreference{
       videoSettings.m_tvShowSubtitlePreference.has_value() &&
-      IsTvShowSubtitlePreferenceEligible() && !isMenuControlledDisc};
+      IsTvShowStreamPreferenceEligible() && !isMenuControlledDisc};
 
   // enable or disable subtitles
   bool visible = useTvShowSubtitlePreference
@@ -6313,6 +6362,7 @@ void CVideoPlayer::SetAudioStream(int iStream)
 {
   m_messenger.Put(std::make_shared<CDVDMsgPlayerSetAudioStream>(iStream));
   m_processInfo->GetVideoSettingsLocked().SetAudioStream(iStream);
+  UpdateTvShowAudioPreference(iStream);
   SynchronizeDemuxer();
   NotifyAudioUpdate();
 }
@@ -6351,12 +6401,12 @@ void CVideoPlayer::SetSubtitle(int iStream)
 {
   m_messenger.Put(std::make_shared<CDVDMsgPlayerSetSubtitleStream>(iStream));
   m_processInfo->GetVideoSettingsLocked().SetSubtitleStream(iStream);
-  if (IsTvShowSubtitlePreferenceEligible())
+  if (IsTvShowStreamPreferenceEligible())
     UpdateTvShowSubtitlePreference(iStream, GetSubtitleVisible());
   NotifySubtitleUpdate(SubtitleChange::FLAG_STREAMINFO_CHANGE);
 }
 
-bool CVideoPlayer::IsTvShowSubtitlePreferenceEligible() const
+bool CVideoPlayer::IsTvShowStreamPreferenceEligible() const
 {
   if (!m_item.HasVideoInfoTag())
     return false;
@@ -6374,9 +6424,32 @@ bool CVideoPlayer::IsTvShowSubtitlePreferenceEligible() const
   return !m_item.IsDiscImage() || URIUtils::IsBlurayPath(dynPath);
 }
 
+void CVideoPlayer::UpdateTvShowAudioPreference(int stream)
+{
+  if (!IsTvShowStreamPreferenceEligible())
+    return;
+
+  CTVShowAudioPreference preference;
+  preference.m_stream = stream;
+
+  AudioStreamInfo info;
+  GetAudioStreamInfo(stream, info);
+  preference.m_hasIdentity = info.valid;
+  if (info.valid)
+  {
+    preference.m_language = info.language;
+    preference.m_name = info.name;
+    preference.m_codec = info.codecName;
+    preference.m_flags = info.flags;
+    preference.m_channels = info.channels;
+  }
+
+  m_processInfo->GetVideoSettingsLocked().SetTvShowAudioPreference(preference);
+}
+
 void CVideoPlayer::UpdateTvShowSubtitlePreference(int stream, bool enabled)
 {
-  if (!IsTvShowSubtitlePreferenceEligible())
+  if (!IsTvShowStreamPreferenceEligible())
     return;
 
   CTVShowSubtitlePreference preference;

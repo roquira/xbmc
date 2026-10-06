@@ -1456,9 +1456,17 @@ void CVideoDatabase::UpdateTables(int iVersion)
         "INTEGER, subtitlesOn BOOLEAN, hasIdentity BOOLEAN, language TEXT, name TEXT, codec TEXT, "
         "flags INTEGER, isExternal BOOLEAN)");
   }
+
+  if (iVersion < 150)
+  {
+    m_pDS->exec(
+        "CREATE TABLE tvshowaudiopreference (idShow INTEGER PRIMARY KEY, audioStream INTEGER, "
+        "hasIdentity BOOLEAN, language TEXT, name TEXT, codec TEXT, flags INTEGER, channels "
+        "INTEGER)");
+  }
 }
 
 int CVideoDatabase::GetSchemaVersion() const
 {
-  return 149;
+  return 150;
 }
