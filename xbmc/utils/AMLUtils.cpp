@@ -248,6 +248,18 @@ bool aml_dolby_vision_enabled()
   return ((dv_enabled && !!dv_user_enabled) == 1);
 }
 
+bool aml_convert_to_sdr_by_vs_engine(StreamHdrType hdrType)
+{
+  const auto settings = CServiceBroker::GetSettingsComponent()->GetSettings();
+  bool dv_user_enabled(!settings->GetBool(CSettings::SETTING_COREELEC_AMLOGIC_DV_DISABLE));
+  bool user_convert_to_sdr = false;
+
+  if (hdrType != StreamHdrType::HDR_TYPE_NONE)
+    user_convert_to_sdr = settings->GetBool(CSettings::SETTING_COREELEC_AMLOGIC_DV2SDR);
+
+  return ((!!aml_support_dolby_vision() && !!user_convert_to_sdr && !!dv_user_enabled) == 1);
+}
+
 bool aml_convert_to_dv_by_vs_engine(StreamHdrType hdrType)
 {
   const auto settings = CServiceBroker::GetSettingsComponent()->GetSettings();
